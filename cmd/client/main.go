@@ -1,5 +1,5 @@
 // Command client is a load generator for cmd/prometheus-app and
-// cmd/otel-app: it fires the same 10 API requests they expose (see the
+// cmd/otel-app: it fires the same 50 API requests they expose (see the
 // endpoints slice below) at random against one or more targets so their
 // request/duration/in-flight metrics move. It never inspects the
 // response - triggering the request is the only job here, so failures
@@ -22,36 +22,66 @@ import (
 	"time"
 )
 
-// endpoint describes one request shape. path may contain "{id}", which is
-// substituted with a random id before the request is sent - it must stay
-// out of the metrics' path label on the server side, but the client
-// doesn't care about that; it just needs a URL that resolves.
+// endpoint describes one request shape.
 type endpoint struct {
 	method string
 	path   string
 }
 
-// endpoints mirrors the 10 routes registered by cmd/prometheus-app and
-// cmd/otel-app in their main() functions.
+// endpoints mirrors the 50 routes (handleAPI1 through handleAPI50)
+// registered by cmd/prometheus-app and cmd/otel-app in their main()
+// functions.
 var endpoints = []endpoint{
-	{http.MethodGet, "/api/work"},
-	{http.MethodPost, "/api/submit"},
-	{http.MethodGet, "/api/users"},
-	{http.MethodGet, "/api/users/{id}"},
-	{http.MethodPost, "/api/users"},
-	{http.MethodPut, "/api/users/{id}"},
-	{http.MethodDelete, "/api/users/{id}"},
-	{http.MethodGet, "/api/orders"},
-	{http.MethodPost, "/api/orders"},
-	{http.MethodGet, "/api/reports"},
-}
-
-// resolve fills in any {id} placeholder with a random id.
-func (e endpoint) resolve() string {
-	if !strings.Contains(e.path, "{id}") {
-		return e.path
-	}
-	return strings.ReplaceAll(e.path, "{id}", strconv.Itoa(1+rand.IntN(1000)))
+	{http.MethodGet, "/api/api1"},
+	{http.MethodGet, "/api/api2"},
+	{http.MethodGet, "/api/api3"},
+	{http.MethodGet, "/api/api4"},
+	{http.MethodGet, "/api/api5"},
+	{http.MethodGet, "/api/api6"},
+	{http.MethodGet, "/api/api7"},
+	{http.MethodGet, "/api/api8"},
+	{http.MethodGet, "/api/api9"},
+	{http.MethodGet, "/api/api10"},
+	{http.MethodGet, "/api/api11"},
+	{http.MethodGet, "/api/api12"},
+	{http.MethodGet, "/api/api13"},
+	{http.MethodGet, "/api/api14"},
+	{http.MethodGet, "/api/api15"},
+	{http.MethodGet, "/api/api16"},
+	{http.MethodGet, "/api/api17"},
+	{http.MethodGet, "/api/api18"},
+	{http.MethodGet, "/api/api19"},
+	{http.MethodGet, "/api/api20"},
+	{http.MethodGet, "/api/api21"},
+	{http.MethodGet, "/api/api22"},
+	{http.MethodGet, "/api/api23"},
+	{http.MethodGet, "/api/api24"},
+	{http.MethodGet, "/api/api25"},
+	{http.MethodGet, "/api/api26"},
+	{http.MethodGet, "/api/api27"},
+	{http.MethodGet, "/api/api28"},
+	{http.MethodGet, "/api/api29"},
+	{http.MethodGet, "/api/api30"},
+	{http.MethodGet, "/api/api31"},
+	{http.MethodGet, "/api/api32"},
+	{http.MethodGet, "/api/api33"},
+	{http.MethodGet, "/api/api34"},
+	{http.MethodGet, "/api/api35"},
+	{http.MethodGet, "/api/api36"},
+	{http.MethodGet, "/api/api37"},
+	{http.MethodGet, "/api/api38"},
+	{http.MethodGet, "/api/api39"},
+	{http.MethodGet, "/api/api40"},
+	{http.MethodGet, "/api/api41"},
+	{http.MethodGet, "/api/api42"},
+	{http.MethodGet, "/api/api43"},
+	{http.MethodGet, "/api/api44"},
+	{http.MethodGet, "/api/api45"},
+	{http.MethodGet, "/api/api46"},
+	{http.MethodGet, "/api/api47"},
+	{http.MethodGet, "/api/api48"},
+	{http.MethodGet, "/api/api49"},
+	{http.MethodGet, "/api/api50"},
 }
 
 func getenv(key, fallback string) string {
@@ -83,7 +113,7 @@ func worker(ctx context.Context, client *http.Client, targets []string, minInter
 		ep := endpoints[rand.IntN(len(endpoints))]
 		target := targets[rand.IntN(len(targets))]
 
-		req, err := http.NewRequestWithContext(ctx, ep.method, target+ep.resolve(), nil)
+		req, err := http.NewRequestWithContext(ctx, ep.method, target+ep.path, nil)
 		if err == nil {
 			resp, err := client.Do(req)
 			sent.Add(1)
