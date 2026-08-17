@@ -1,0 +1,29 @@
+# Receives OTLP metrics pushed by cmd/otel-app instances running on the
+# host (see deployment/Makefile's run-otel-app target, ports 8001-8100).
+# Each otel-app process defaults OTEL_EXPORTER_OTLP_ENDPOINT to
+# http://localhost:4317, which lands here once docker-compose.yaml
+# publishes the collector's 4317/4318 to the host.
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch: { }
+
+exporters:
+  # Placeholder until a backend is wired up (see deployment/docker/backend/):
+  # swap or add an exporter here (e.g. prometheusremotewrite, otlphttp) once
+  # one of those is ready, and reference it in the pipeline below.
+  debug:
+    verbosity: normal
+
+service:
+  pipelines:
+    metrics:
+      receivers: [ otlp ]
+      processors: [ batch ]
+      exporters: [ debug ]
