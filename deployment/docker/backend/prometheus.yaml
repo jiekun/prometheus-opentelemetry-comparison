@@ -1,0 +1,7 @@
+# Minimal config for docker-compose.prometheus.yaml. This backend never
+# scrapes anything - it only receives already-collected samples pushed to
+# it via the remote-write and OTLP receivers enabled on the command line -
+# so no scrape_configs are needed. Prometheus still requires a config file
+# to start, hence this file exists at all.
+global:
+  scrape_interval: 15s

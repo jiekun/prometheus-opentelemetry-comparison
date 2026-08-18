@@ -8,7 +8,7 @@ LOG_DIR       := $(BIN_DIR)/logs
 PORT_START ?= 8001
 PORT_END   ?= 8100
 
-.PHONY: all otel-app prometheus-app uninstrumented-app client clean \
+.PHONY: all otel-app prometheus-app uninstrumented-app client clean tar \
 	run-otel-app run-prometheus-app run-uninstrumented-app \
 	stop-otel-app stop-prometheus-app stop-uninstrumented-app stop
 
@@ -28,6 +28,17 @@ client:
 
 clean:
 	rm -rf $(BIN_DIR)
+
+# Tars each binary already present in $(BIN_DIR) into its own tar.gz next
+# to it (e.g. bin/otel-app -> bin/otel-app.tar.gz).
+tar:
+	@for bin in $(BIN_DIR)/*; do \
+		[ -f "$$bin" ] || continue; \
+		case "$$bin" in *.tar.gz) continue ;; esac; \
+		name=$$(basename "$$bin"); \
+		tar -C $(BIN_DIR) -czf $(BIN_DIR)/$$name.tar.gz $$name; \
+		echo "packaged $(BIN_DIR)/$$name.tar.gz"; \
+	done
 
 # run-* targets launch one instance per port in $(PORT_START)-$(PORT_END)
 # (100 by default), each backgrounded and logging to its own file under
