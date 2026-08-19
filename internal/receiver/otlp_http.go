@@ -36,10 +36,11 @@ func NewOTLPHTTPRoute(r *gin.Engine) {
 			for _, sm := range rs.GetScopeMetrics() {
 				for _, m := range sm.GetMetrics() {
 					gauge := m.GetGauge()
+					histogram := m.GetHistogram()
 					exponentialHistogram := m.GetExponentialHistogram()
 					sum := m.GetSum()
 					summary := m.GetSummary()
-					otlpHTTPExportSampleTotal.Add(len(gauge.GetDataPoints()) + len(exponentialHistogram.GetDataPoints()) + len(sum.GetDataPoints()) + len(summary.GetDataPoints()))
+					otlpHTTPExportSampleTotal.Add(len(gauge.GetDataPoints()) + len(histogram.GetDataPoints()) + len(exponentialHistogram.GetDataPoints()) + len(sum.GetDataPoints()) + len(summary.GetDataPoints()))
 				}
 			}
 		}
