@@ -12,7 +12,7 @@ processors:
 exporters:
   otlp_http/prometheus:
     metrics_endpoint: "http://10.140.15.201:9090/api/v1/otlp/v1/metrics"
-    compression: snappy
+    compression: gzip
     timeout: 10s
     tls:
       insecure: true
