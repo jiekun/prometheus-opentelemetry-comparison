@@ -1,8 +1,10 @@
 include deployment/Makefile
+include deployment/docker/agent/Makefile
+include deployment/docker/backend/Makefile
 
 # Prerequisites on a fresh instance (must happen before this file is
 # available, so they stay manual):
-#   sudo apt install git
+#   sudo apt install git make
 #   git clone https://github.com/jiekun/prometheus-opentelemetry-comparison.git
 
 GO_VERSION := 1.26.5
