@@ -8,7 +8,7 @@ global:
   scrape_interval: 15s
 
 otlp:
-  promote_all_resource_attributes: true
+  promote_all_resource_attributes: false
 
 scrape_configs:
   - job_name: node
