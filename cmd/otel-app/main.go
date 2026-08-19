@@ -816,6 +816,42 @@ func simulateBackground(ctx context.Context, m *otelMetrics, proc *procstats.Rea
 	}
 }
 
+// metricExportInterval mirrors the OTel SDK's own parsing of
+// OTEL_METRIC_EXPORT_INTERVAL (env.go in go.opentelemetry.io/otel/sdk/metric):
+// milliseconds, falling back to the SDK's 60s default if unset or invalid.
+// It's re-read here (rather than exposed by the SDK) so startupJitter can
+// size itself to whatever interval the periodic reader will actually use.
+func metricExportInterval() time.Duration {
+	const defaultInterval = 60 * time.Second
+	v := os.Getenv("OTEL_METRIC_EXPORT_INTERVAL")
+	if v == "" {
+		return defaultInterval
+	}
+	ms, err := strconv.Atoi(v)
+	if err != nil || ms <= 0 {
+		return defaultInterval
+	}
+	return time.Duration(ms) * time.Millisecond
+}
+
+// startupJitter sleeps a random fraction of one metric-export interval
+// before returning. Every instance of this app is normally started at
+// once (see deployment/Makefile's run-otel-app, which forks 100 of these
+// back to back), which would otherwise leave their periodic exporters
+// ticking in lockstep - all 100 sending an OTLP export in the same
+// instant every interval, rather than a steady trickle. Spreading each
+// instance's first tick over a random offset within one interval spreads
+// every subsequent tick with it, since the reader ticks on a fixed period
+// from that first one.
+func startupJitter(ctx context.Context) {
+	interval := metricExportInterval()
+	jitter := time.Duration(rand.Int64N(int64(interval)))
+	select {
+	case <-ctx.Done():
+	case <-time.After(jitter):
+	}
+}
+
 func main() {
 	addr := os.Getenv("LISTEN_ADDR")
 	if addr == "" {
@@ -848,6 +884,10 @@ func main() {
 	if err != nil {
 		log.Fatalf("resource: %v", err)
 	}
+
+	// Stagger this instance's export phase before the periodic reader
+	// starts ticking - see startupJitter.
+	startupJitter(ctx)
 
 	// No WithInterval: leave the export cadence to the
 	// OTEL_METRIC_EXPORT_INTERVAL env var (60s if unset), matching how the
