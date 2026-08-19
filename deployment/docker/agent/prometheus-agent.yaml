@@ -19,11 +19,11 @@ global:
 remote_write:
   - url: http://10.140.15.201:9090/api/v1/write
     protobuf_message: io.prometheus.write.v2.Request
+    queue_config:
+        capacity: 25000
+        max_samples_per_send: 10000
+        batch_send_deadline: 1s
 
-queue_config:
-  capacity: 25000
-  max_samples_per_send: 10000
-  batch_send_deadline: 1s
 
 scrape_configs:
   - job_name: prometheus-apps
