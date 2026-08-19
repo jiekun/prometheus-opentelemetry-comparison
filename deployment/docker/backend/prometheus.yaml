@@ -45,3 +45,6 @@ scrape_configs:
       - targets: [ 10.140.15.201:8000 ]
         labels:
           host_name: noop-receiver
+      - targets: [ 10.140.15.200:8888 ]
+        labels:
+          host_name: opentelemetry-collector-agent

@@ -33,3 +33,21 @@ service:
       processors: [ batch ]
       exporters: [ otlp/noop-receiver ]
 
+  # Self-observability: exposes the collector's own internal metrics as a
+  # Prometheus-scrapeable endpoint (see prometheus-server's prometheus.yaml
+  # for the matching scrape job). In particular this includes
+  # otelcol_receiver_accepted_metric_points - the sample count this agent
+  # has actually received from otel-app - alongside its own resource usage
+  # (otelcol_process_*). without_type_suffix defaults to true for this
+  # exporter, so the accepted-points counter is exposed without a
+  # trailing _total.
+  telemetry:
+    metrics:
+      level: basic
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: "0.0.0.0"
+                port: 8888
+
