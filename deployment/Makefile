@@ -19,6 +19,16 @@ OTEL_METRIC_EXPORT_INTERVAL ?= 15000
 
 OTEL_EXPORTER_OTLP_METRICS_COMPRESSION ?= gzip
 
+# This host's own internal IP, used to give each otel-app instance a
+# service.instance.id resource attribute of "<ip>:<port>" - both
+# Prometheus's OTLP receiver and the Collector's remote-write exporter
+# convert that attribute into the metric's "instance" label, matching the
+# instance="<ip>:<port>" label Prometheus assigns automatically to scraped
+# targets like prometheus-app. Auto-detected via hostname -I, which is
+# only correct if the host has a single network interface (true for every
+# instance in this project); override if that's wrong for yours.
+HOST_IP ?= $(shell hostname -I | awk '{print $$1}')
+
 # Hosts run-client fires requests at - 2 otel-app instances and 2
 # prometheus-app instances, each listening on $(PORT_START)-$(PORT_END)
 # (100 ports), for 400 targets total.
@@ -64,7 +74,7 @@ run-otel-app: otel-app
 	@mkdir -p $(LOG_DIR)
 	@: > $(LOG_DIR)/otel-app.pids
 	@for port in $$(seq $(PORT_START) $(PORT_END)); do \
-		LISTEN_ADDR=":$$port" OTEL_EXPORTER_OTLP_ENDPOINT=$(OTEL_COLLECTOR_ENDPOINT) OTEL_EXPORTER_OTLP_METRICS_COMPRESSION=$(OTEL_EXPORTER_OTLP_METRICS_COMPRESSION) OTEL_METRIC_EXPORT_INTERVAL=$(OTEL_METRIC_EXPORT_INTERVAL) $(BIN_DIR)/otel-app > $(LOG_DIR)/otel-app-$$port.log 2>&1 < /dev/null & \
+		LISTEN_ADDR=":$$port" OTEL_EXPORTER_OTLP_ENDPOINT=$(OTEL_COLLECTOR_ENDPOINT) OTEL_EXPORTER_OTLP_METRICS_COMPRESSION=$(OTEL_EXPORTER_OTLP_METRICS_COMPRESSION) OTEL_METRIC_EXPORT_INTERVAL=$(OTEL_METRIC_EXPORT_INTERVAL) OTEL_RESOURCE_ATTRIBUTES="service.instance.id=$(HOST_IP):$$port" $(BIN_DIR)/otel-app > $(LOG_DIR)/otel-app-$$port.log 2>&1 < /dev/null & \
 		echo $$! >> $(LOG_DIR)/otel-app.pids; \
 	done
 	@echo "started $$(wc -l < $(LOG_DIR)/otel-app.pids) otel-app instances on ports $(PORT_START)-$(PORT_END) (logs: $(LOG_DIR), pids: $(LOG_DIR)/otel-app.pids)"
