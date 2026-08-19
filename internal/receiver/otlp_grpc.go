@@ -23,17 +23,6 @@ func NewOTLPMetricsEndpoint(grpcServer *grpc.Server) {
 
 func (s *noopOTLPMetricsServer) Export(ctx context.Context, req *otlp.ExportMetricsServiceRequest) (*otlp.ExportMetricsServiceResponse, error) {
 	otlpExportRequestTotal.Inc()
-	for _, rs := range req.GetResourceMetrics() {
-		for _, sm := range rs.GetScopeMetrics() {
-			for _, m := range sm.GetMetrics() {
-				gauge := m.GetGauge()
-				histogram := m.GetHistogram()
-				exponentialHistogram := m.GetExponentialHistogram()
-				sum := m.GetSum()
-				summary := m.GetSummary()
-				otlpExportSampleTotal.Add(len(gauge.GetDataPoints()) + len(histogram.GetDataPoints()) + len(exponentialHistogram.GetDataPoints()) + len(sum.GetDataPoints()) + len(summary.GetDataPoints()))
-			}
-		}
-	}
+	otlpExportSampleTotal.Add(countSamples(req))
 	return &otlp.ExportMetricsServiceResponse{}, nil
 }
