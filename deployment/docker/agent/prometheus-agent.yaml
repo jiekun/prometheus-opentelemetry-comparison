@@ -13,17 +13,15 @@ global:
   scrape_interval: 15s
   scrape_timeout: 10s
 
-# Forwards scraped samples to the Prometheus server (see
-# deployment/docker/backend, --web.enable-remote-write-receiver) using
-# Remote Write 2.0.
 remote_write:
   - url: http://10.140.15.201:9090/api/v1/write
-    protobuf_message: io.prometheus.write.v2.Request
+    protobuf_message: prometheus.WriteRequest
     queue_config:
         capacity: 25000
         max_samples_per_send: 10000
         batch_send_deadline: 1s
-
+    metadata_config:
+        send: false
 
 scrape_configs:
   - job_name: prometheus-apps
