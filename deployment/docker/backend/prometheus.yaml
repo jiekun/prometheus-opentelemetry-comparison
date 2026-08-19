@@ -42,3 +42,6 @@ scrape_configs:
       - targets: [10.140.15.202:9200]
         labels:
           host_name: loadgen
+      - targets: [ 10.140.15.201:8000 ]
+        labels:
+          host_name: noop-receiver
