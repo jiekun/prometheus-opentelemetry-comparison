@@ -12,9 +12,14 @@ PORT_END   ?= 8100
 # init-otel-agent/run-otel-agent).
 OTEL_COLLECTOR_ENDPOINT ?= http://10.140.15.200:4318
 
+# Hosts run-client fires requests at - 2 otel-app instances and 2
+# prometheus-app instances, each listening on $(PORT_START)-$(PORT_END)
+# (100 ports), for 400 targets total.
+CLIENT_HOSTS ?= 10.140.15.196 10.140.15.197 10.140.15.194 10.140.15.195
+
 .PHONY: all otel-app prometheus-app uninstrumented-app client clean tar \
-	run-otel-app run-prometheus-app run-uninstrumented-app \
-	stop-otel-app stop-prometheus-app stop-uninstrumented-app stop
+	run-otel-app run-prometheus-app run-uninstrumented-app run-client \
+	stop-otel-app stop-prometheus-app stop-uninstrumented-app stop-client stop
 
 all: otel-app prometheus-app uninstrumented-app client
 
@@ -75,6 +80,22 @@ run-uninstrumented-app: uninstrumented-app
 	done
 	@echo "started $$(wc -l < $(LOG_DIR)/uninstrumented-app.pids) uninstrumented-app instances on ports $(PORT_START)-$(PORT_END) (logs: $(LOG_DIR), pids: $(LOG_DIR)/uninstrumented-app.pids)"
 
+# Runs a single client process (not one per port, unlike the run-*-app
+# targets above) whose CLIENT_TARGETS spans every port on every host in
+# $(CLIENT_HOSTS), so one process load-tests all of them.
+run-client: client
+	@mkdir -p $(LOG_DIR)
+	@targets=""; \
+	for host in $(CLIENT_HOSTS); do \
+		for port in $$(seq $(PORT_START) $(PORT_END)); do \
+			targets="$$targets,http://$$host:$$port"; \
+		done; \
+	done; \
+	targets="$${targets#,}"; \
+	CLIENT_TARGETS="$$targets" nohup $(BIN_DIR)/client > $(LOG_DIR)/client.log 2>&1 & \
+	echo $$! > $(LOG_DIR)/client.pid; \
+	echo "started client (1 process) against $$(echo "$$targets" | tr ',' '\n' | wc -l) targets (log: $(LOG_DIR)/client.log, pid: $(LOG_DIR)/client.pid)"
+
 stop-otel-app:
 	@if [ -f $(LOG_DIR)/otel-app.pids ]; then \
 		xargs -r kill < $(LOG_DIR)/otel-app.pids; \
@@ -102,4 +123,13 @@ stop-uninstrumented-app:
 		echo "no uninstrumented-app.pids file found, nothing to stop"; \
 	fi
 
-stop: stop-otel-app stop-prometheus-app stop-uninstrumented-app
+stop-client:
+	@if [ -f $(LOG_DIR)/client.pid ]; then \
+		xargs -r kill < $(LOG_DIR)/client.pid; \
+		rm -f $(LOG_DIR)/client.pid; \
+		echo "stopped client"; \
+	else \
+		echo "no client.pid file found, nothing to stop"; \
+	fi
+
+stop: stop-otel-app stop-prometheus-app stop-uninstrumented-app stop-client

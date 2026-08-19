@@ -1,9 +1,13 @@
 // Command client is a load generator for cmd/prometheus-app and
 // cmd/otel-app: it fires the same 50 API requests they expose (see the
-// endpoints slice below) at random against one or more targets so their
-// request/duration/in-flight metrics move. It never inspects the
-// response - triggering the request is the only job here, so failures
-// (including a target being down) are counted but otherwise ignored.
+// endpoints slice below, chosen at random) at a fixed rate per target
+// (CLIENT_TARGET_RATE_HZ), so every target receives the same, precisely
+// controlled request rate - not a "best effort" rate that depends on how
+// slow that target's handlers happen to run - which keeps the load
+// comparable when measuring resource usage across targets. It never
+// inspects the response - triggering the request is the only job here,
+// so failures (including a target being down) are counted but otherwise
+// ignored.
 package main
 
 import (
@@ -11,15 +15,21 @@ import (
 	"io"
 	"log"
 	"math/rand/v2"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 // endpoint describes one request shape.
@@ -91,6 +101,18 @@ func getenv(key, fallback string) string {
 	return fallback
 }
 
+func getenvFloat(key string, fallback float64) float64 {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback
+	}
+	f, err := strconv.ParseFloat(v, 64)
+	if err != nil {
+		log.Fatalf("invalid %s=%q: %v", key, v, err)
+	}
+	return f
+}
+
 func getenvInt(key string, fallback int) int {
 	v := os.Getenv(key)
 	if v == "" {
@@ -103,36 +125,129 @@ func getenvInt(key string, fallback int) int {
 	return n
 }
 
-// worker repeatedly picks a random target and endpoint, fires the
-// request, and waits a random interval before the next one. It ignores
+// clientMetrics exposes, per target host, how many requests this client
+// has sent it and how many of those failed - so the load applied to each
+// target app instance is directly visible in Prometheus, not just in
+// this process's own log.
+type clientMetrics struct {
+	sentTotal   *prometheus.CounterVec
+	failedTotal *prometheus.CounterVec
+}
+
+func newClientMetrics(reg prometheus.Registerer) *clientMetrics {
+	m := &clientMetrics{
+		sentTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "client_requests_sent_total",
+			Help: "Total number of requests this client has sent to each target host.",
+		}, []string{"target"}),
+		failedTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "client_requests_failed_total",
+			Help: "Total number of requests this client sent to each target host that failed (transport error, not HTTP status).",
+		}, []string{"target"}),
+	}
+	reg.MustRegister(m.sentTotal, m.failedTotal)
+	return m
+}
+
+// hostOf returns just the IP/hostname a target points at, stripping
+// scheme and port, so many targets on the same host (e.g. one per port)
+// group together in the status log.
+func hostOf(target string) string {
+	u, err := url.Parse(target)
+	if err != nil || u.Host == "" {
+		return target
+	}
+	if h, _, err := net.SplitHostPort(u.Host); err == nil {
+		return h
+	}
+	return u.Host
+}
+
+// logStatus logs sent/failed request counts summed per host (as
+// determined by hostOf), followed by the grand total across all hosts.
+func logStatus(hosts []string, sentByTarget, failedByTarget []atomic.Int64) {
+	type counts struct{ sent, failed int64 }
+	byHost := map[string]*counts{}
+	var order []string
+	var totalSent, totalFailed int64
+
+	for i, h := range hosts {
+		s, f := sentByTarget[i].Load(), failedByTarget[i].Load()
+		totalSent += s
+		totalFailed += f
+		c, ok := byHost[h]
+		if !ok {
+			c = &counts{}
+			byHost[h] = c
+			order = append(order, h)
+		}
+		c.sent += s
+		c.failed += f
+	}
+	sort.Strings(order)
+	for _, h := range order {
+		c := byHost[h]
+		log.Printf("  %s: sent=%d failed=%d", h, c.sent, c.failed)
+	}
+	log.Printf("sent=%d failed=%d", totalSent, totalFailed)
+}
+
+// targetCounters bundles the two places a completed request against one
+// target gets recorded: the in-process atomic counters behind the
+// periodic text log, and the Prometheus counters exposed for scraping.
+type targetCounters struct {
+	sentAtomic, failedAtomic *atomic.Int64
+	sentMetric, failedMetric prometheus.Counter
+}
+
+func (c *targetCounters) recordSent() {
+	c.sentAtomic.Add(1)
+	c.sentMetric.Inc()
+}
+
+func (c *targetCounters) recordFailed() {
+	c.failedAtomic.Add(1)
+	c.failedMetric.Inc()
+}
+
+// targetWorker fires requests at target on a fixed-rate ticker (one tick
+// every "interval") for as long as ctx is alive. Each tick's request runs
+// in its own goroutine rather than blocking the ticker loop, so a slow or
+// hung target delays only its own in-flight requests - never the rate at
+// which new ones are fired, at this target or any other. A random
+// startup delay (up to one interval) staggers the tickers across targets
+// so the aggregate load doesn't arrive in synchronized bursts. It ignores
 // the response body and any error beyond counting it - it exists purely
 // to make the target apps' metrics move.
-func worker(ctx context.Context, client *http.Client, targets []string, minInterval, maxInterval time.Duration, sent, failed *atomic.Int64) {
-	jitter := maxInterval - minInterval
+func targetWorker(ctx context.Context, client *http.Client, target string, interval time.Duration, c *targetCounters) {
+	select {
+	case <-ctx.Done():
+		return
+	case <-time.After(time.Duration(rand.Int64N(int64(interval)))):
+	}
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
 	for {
-		ep := endpoints[rand.IntN(len(endpoints))]
-		target := targets[rand.IntN(len(targets))]
-
-		req, err := http.NewRequestWithContext(ctx, ep.method, target+ep.path, nil)
-		if err == nil {
-			resp, err := client.Do(req)
-			sent.Add(1)
-			if err != nil {
-				failed.Add(1)
-			} else {
-				_, _ = io.Copy(io.Discard, resp.Body)
-				_ = resp.Body.Close()
-			}
-		}
-
-		sleep := minInterval
-		if jitter > 0 {
-			sleep += time.Duration(rand.Int64N(int64(jitter)))
-		}
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(sleep):
+		case <-ticker.C:
+			ep := endpoints[rand.IntN(len(endpoints))]
+			go func() {
+				req, err := http.NewRequestWithContext(ctx, ep.method, target+ep.path, nil)
+				if err != nil {
+					return
+				}
+				resp, err := client.Do(req)
+				c.recordSent()
+				if err != nil {
+					c.recordFailed()
+					return
+				}
+				_, _ = io.Copy(io.Discard, resp.Body)
+				_ = resp.Body.Close()
+			}()
 		}
 	}
 }
@@ -142,30 +257,62 @@ func main() {
 	for i := range targets {
 		targets[i] = strings.TrimRight(strings.TrimSpace(targets[i]), "/")
 	}
-	workers := getenvInt("CLIENT_WORKERS", 4)
-	minInterval := time.Duration(getenvInt("CLIENT_MIN_INTERVAL_MS", 5)) * time.Millisecond
-	maxInterval := time.Duration(getenvInt("CLIENT_MAX_INTERVAL_MS", 50)) * time.Millisecond
-	timeout := time.Duration(getenvInt("CLIENT_TIMEOUT_MS", 2000)) * time.Millisecond
-	if maxInterval < minInterval {
-		maxInterval = minInterval
+	rateHz := getenvFloat("CLIENT_TARGET_RATE_HZ", 10)
+	if rateHz <= 0 {
+		log.Fatalf("invalid CLIENT_TARGET_RATE_HZ=%v: must be > 0", rateHz)
 	}
+	interval := time.Duration(float64(time.Second) / rateHz)
+	if interval <= 0 {
+		interval = 1
+	}
+	timeout := time.Duration(getenvInt("CLIENT_TIMEOUT_MS", 2000)) * time.Millisecond
+	metricsAddr := getenv("CLIENT_METRICS_ADDR", ":9200")
 
-	httpClient := &http.Client{Timeout: timeout}
+	httpClient := &http.Client{
+		Timeout: timeout,
+		Transport: &http.Transport{
+			MaxIdleConnsPerHost: 4,
+		},
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	log.Printf("client generating load against %v with %d workers (%s-%s between requests per worker)",
-		targets, workers, minInterval, maxInterval)
+	reg := prometheus.NewRegistry()
+	metrics := newClientMetrics(reg)
+	metricsMux := http.NewServeMux()
+	metricsMux.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
+	metricsSrv := &http.Server{Addr: metricsAddr, Handler: metricsMux}
+	go func() {
+		log.Printf("client metrics listening on %s (metrics at /metrics)", metricsAddr)
+		if err := metricsSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("metrics listen: %v", err)
+		}
+	}()
 
-	var sent, failed atomic.Int64
+	log.Printf("client generating load against %d targets at %.3g req/s each (%s between requests per target, ~%.3g req/s total)",
+		len(targets), rateHz, interval, rateHz*float64(len(targets)))
+
+	hosts := make([]string, len(targets))
+	for i, target := range targets {
+		hosts[i] = hostOf(target)
+	}
+	sentByTarget := make([]atomic.Int64, len(targets))
+	failedByTarget := make([]atomic.Int64, len(targets))
+
 	var wg sync.WaitGroup
-	for i := 0; i < workers; i++ {
+	for i, target := range targets {
+		counters := &targetCounters{
+			sentAtomic:   &sentByTarget[i],
+			failedAtomic: &failedByTarget[i],
+			sentMetric:   metrics.sentTotal.WithLabelValues(hosts[i]),
+			failedMetric: metrics.failedTotal.WithLabelValues(hosts[i]),
+		}
 		wg.Add(1)
-		go func() {
+		go func(target string, counters *targetCounters) {
 			defer wg.Done()
-			worker(ctx, httpClient, targets, minInterval, maxInterval, &sent, &failed)
-		}()
+			targetWorker(ctx, httpClient, target, interval, counters)
+		}(target, counters)
 	}
 
 	statusTicker := time.NewTicker(10 * time.Second)
@@ -176,11 +323,12 @@ loop:
 		case <-ctx.Done():
 			break loop
 		case <-statusTicker.C:
-			log.Printf("sent=%d failed=%d", sent.Load(), failed.Load())
+			logStatus(hosts, sentByTarget, failedByTarget)
 		}
 	}
 
 	log.Println("shutting down")
 	wg.Wait()
-	log.Printf("final: sent=%d failed=%d", sent.Load(), failed.Load())
+	log.Println("final:")
+	logStatus(hosts, sentByTarget, failedByTarget)
 }
