@@ -21,9 +21,9 @@ remote_write:
     protobuf_message: io.prometheus.write.v2.Request
 
 queue_config:
-    capacity: 25000
-    max_samples_per_send: 10000
-    batch_send_deadline: 1s
+  capacity: 25000
+  max_samples_per_send: 10000
+  batch_send_deadline: 1s
 
 scrape_configs:
   - job_name: prometheus-apps
