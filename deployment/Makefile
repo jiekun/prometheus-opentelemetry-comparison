@@ -12,6 +12,11 @@ PORT_END   ?= 8100
 # init-otel-agent/run-otel-agent).
 OTEL_COLLECTOR_ENDPOINT ?= http://10.140.15.200:4318
 
+# otel-app's metric export cadence, in milliseconds (OTEL_METRIC_EXPORT_INTERVAL,
+# read natively by the OTel SDK's periodic reader - see cmd/otel-app/main.go).
+# Matches prometheus-agent.yaml's scrape_interval (15s) for a fair comparison.
+OTEL_METRIC_EXPORT_INTERVAL ?= 15000
+
 # Hosts run-client fires requests at - 2 otel-app instances and 2
 # prometheus-app instances, each listening on $(PORT_START)-$(PORT_END)
 # (100 ports), for 400 targets total.
@@ -57,7 +62,7 @@ run-otel-app: otel-app
 	@mkdir -p $(LOG_DIR)
 	@: > $(LOG_DIR)/otel-app.pids
 	@for port in $$(seq $(PORT_START) $(PORT_END)); do \
-		LISTEN_ADDR=":$$port" OTEL_EXPORTER_OTLP_ENDPOINT=$(OTEL_COLLECTOR_ENDPOINT) $(BIN_DIR)/otel-app > $(LOG_DIR)/otel-app-$$port.log 2>&1 < /dev/null & \
+		LISTEN_ADDR=":$$port" OTEL_EXPORTER_OTLP_ENDPOINT=$(OTEL_COLLECTOR_ENDPOINT) OTEL_METRIC_EXPORT_INTERVAL=$(OTEL_METRIC_EXPORT_INTERVAL) $(BIN_DIR)/otel-app > $(LOG_DIR)/otel-app-$$port.log 2>&1 < /dev/null & \
 		echo $$! >> $(LOG_DIR)/otel-app.pids; \
 	done
 	@echo "started $$(wc -l < $(LOG_DIR)/otel-app.pids) otel-app instances on ports $(PORT_START)-$(PORT_END) (logs: $(LOG_DIR), pids: $(LOG_DIR)/otel-app.pids)"
