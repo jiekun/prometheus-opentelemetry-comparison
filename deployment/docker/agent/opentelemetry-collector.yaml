@@ -10,7 +10,7 @@ processors:
   batch:
 
 exporters:
-  otlphttp/prometheus:
+  otlp_http/prometheus:
     endpoint: "http://10.140.15.201:9090/api/v1/otlp"
     compression: snappy
     timeout: 10s
@@ -22,5 +22,5 @@ service:
     metrics:
       receivers: [ otlp ]
       processors: [ batch ]
-      exporters: [ otlphttp/prometheus ]
+      exporters: [ otlp_http/prometheus ]
 
