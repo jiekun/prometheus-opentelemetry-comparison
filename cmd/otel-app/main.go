@@ -46,7 +46,7 @@ import (
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
+	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
 	"go.opentelemetry.io/otel/metric"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
@@ -825,17 +825,17 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// otlpmetricgrpc.New honors the standard OTEL_EXPORTER_OTLP_* env vars
+	// otlpmetrichttp.New honors the standard OTEL_EXPORTER_OTLP_* env vars
 	// (endpoint, headers, TLS, ...). Default to a local, plaintext
 	// collector for this comparison lab; override via
 	// OTEL_EXPORTER_OTLP_ENDPOINT for anything else.
 	endpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
 	if endpoint == "" {
-		endpoint = "http://localhost:4317"
+		endpoint = "http://localhost:4318"
 		os.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", endpoint)
 	}
 
-	exp, err := otlpmetricgrpc.New(ctx)
+	exp, err := otlpmetrichttp.New(ctx)
 	if err != nil {
 		log.Fatalf("otlp metric exporter: %v", err)
 	}

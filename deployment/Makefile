@@ -8,6 +8,10 @@ LOG_DIR       := $(BIN_DIR)/logs
 PORT_START ?= 8001
 PORT_END   ?= 8100
 
+# Collector otel-app pushes OTLP metrics to (see deployment/docker/agent's
+# init-otel-agent/run-otel-agent).
+OTEL_COLLECTOR_ENDPOINT ?= http://10.140.15.200:4318
+
 .PHONY: all otel-app prometheus-app uninstrumented-app client clean tar \
 	run-otel-app run-prometheus-app run-uninstrumented-app \
 	stop-otel-app stop-prometheus-app stop-uninstrumented-app stop
@@ -48,7 +52,7 @@ run-otel-app: otel-app
 	@mkdir -p $(LOG_DIR)
 	@: > $(LOG_DIR)/otel-app.pids
 	@for port in $$(seq $(PORT_START) $(PORT_END)); do \
-		LISTEN_ADDR=":$$port" $(BIN_DIR)/otel-app > $(LOG_DIR)/otel-app-$$port.log 2>&1 < /dev/null & \
+		LISTEN_ADDR=":$$port" OTEL_EXPORTER_OTLP_ENDPOINT=$(OTEL_COLLECTOR_ENDPOINT) $(BIN_DIR)/otel-app > $(LOG_DIR)/otel-app-$$port.log 2>&1 < /dev/null & \
 		echo $$! >> $(LOG_DIR)/otel-app.pids; \
 	done
 	@echo "started $$(wc -l < $(LOG_DIR)/otel-app.pids) otel-app instances on ports $(PORT_START)-$(PORT_END) (logs: $(LOG_DIR), pids: $(LOG_DIR)/otel-app.pids)"
