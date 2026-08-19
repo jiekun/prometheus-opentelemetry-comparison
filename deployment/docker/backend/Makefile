@@ -1,5 +1,6 @@
 BACKEND_DIR          := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 BACKEND_BIN_DIR      := $(abspath $(BACKEND_DIR)../../../bin)
+BACKEND_ROOT_DIR             := $(abspath $(BACKEND_DIR)../../..)
 
 PROM_SERVER_VERSION   ?= 3.14.0
 PROM_SERVER_TARBALL   := prometheus-$(PROM_SERVER_VERSION).linux-amd64.tar.gz
@@ -9,7 +10,12 @@ PROM_SERVER_DATA_DIR  := $(BACKEND_BIN_DIR)/data
 PROM_SERVER_LOG       := $(BACKEND_BIN_DIR)/prometheus_server.log
 PROM_SERVER_PID       := $(BACKEND_BIN_DIR)/prometheus_server.pid
 
-.PHONY: init-prometheus-server run-prometheus-server stop-prometheus-server
+NOOP_RECEIVER_BIN     := $(BACKEND_BIN_DIR)/metrics-noop-receiver
+NOOP_RECEIVER_LOG     := $(BACKEND_BIN_DIR)/metrics-noop-receiver.log
+NOOP_RECEIVER_PID     := $(BACKEND_BIN_DIR)/metrics-noop-receiver.pid
+
+.PHONY: init-prometheus-server run-prometheus-server stop-prometheus-server \
+	noop-receiver run-noop-receiver stop-noop-receiver
 
 # Downloads the prometheus binary used by run-prometheus-server. Safe to
 # re-run on the same instance.
@@ -33,5 +39,29 @@ stop-prometheus-server:
 		echo "stopped prometheus-server"; \
 	else \
 		echo "no $(PROM_SERVER_PID) file found, nothing to stop"; \
+	fi
+
+# Builds cmd/metrics-noop-receiver: a stand-in "Prometheus server" that
+# accepts Prometheus remote-write v1/v2 (POST /api/v1/write, /api/v2/write)
+# and OTLP (POST /otlp/export over HTTP, or gRPC on :8001), decodes each
+# request and discards it rather than storing it, and exposes
+# decode_error_total/read_error_total plus its own resource usage on
+# :8000/metrics (see internal/receiver). Useful as a zero-storage-overhead
+# baseline to compare a real Prometheus server against. Ports (8000 HTTP,
+# 8001 gRPC) are hardcoded in cmd/metrics-noop-receiver/main.go, not
+# configurable via env/flags.
+noop-receiver:
+	go build -C $(BACKEND_ROOT_DIR) -o $(NOOP_RECEIVER_BIN) ./cmd/metrics-noop-receiver
+
+run-noop-receiver: noop-receiver
+	nohup $(NOOP_RECEIVER_BIN) > $(NOOP_RECEIVER_LOG) 2>&1 & echo $$! > $(NOOP_RECEIVER_PID)
+
+stop-noop-receiver:
+	@if [ -f $(NOOP_RECEIVER_PID) ]; then \
+		xargs -r kill < $(NOOP_RECEIVER_PID); \
+		rm -f $(NOOP_RECEIVER_PID); \
+		echo "stopped noop-receiver"; \
+	else \
+		echo "no $(NOOP_RECEIVER_PID) file found, nothing to stop"; \
 	fi
 

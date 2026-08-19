@@ -14,8 +14,15 @@ global:
   scrape_timeout: 10s
 
 remote_write:
-  - url: http://10.140.15.201:9090/api/v1/write
-    protobuf_message: prometheus.WriteRequest
+  # cmd/metrics-noop-receiver (deployment/docker/backend), running on the
+  # same instance as the real Prometheus server (10.140.15.201) but on its
+  # own port. It routes Remote Write 1.0 vs 2.0 by URL path rather than by
+  # negotiating on Content-Type like a real Prometheus server does, so the
+  # path must be /api/v2/write to match protobuf_message below - /api/v1/write
+  # would have it try to unmarshal a v2 payload as a v1 WriteRequest and
+  # fail to decode every time.
+  - url: http://10.140.15.201:8000/api/v2/write
+    protobuf_message: io.prometheus.write.v2.Request
     queue_config:
         capacity: 25000
         max_samples_per_send: 10000

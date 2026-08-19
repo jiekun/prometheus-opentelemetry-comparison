@@ -12,8 +12,15 @@ processors:
     timeout: 1s
 
 exporters:
-  otlp_http/prometheus:
-    metrics_endpoint: "http://10.140.15.201:9090/api/v1/otlp/v1/metrics"
+  # cmd/metrics-noop-receiver (deployment/docker/backend), running on the
+  # same instance as the real Prometheus server (10.140.15.201) but on its
+  # own ports. Its OTLP endpoint is gRPC-only for our purposes: the gRPC
+  # side (:8001) is a standard, fully-compliant OTLP MetricsService, while
+  # its HTTP side (:8000/otlp/export) never decompresses the request body
+  # before unmarshaling - it would just count every batch as a decode
+  # error if this exporter used HTTP with compression enabled.
+  otlp/noop-receiver:
+    endpoint: "10.140.15.201:8001"
     compression: gzip
     timeout: 10s
     tls:
@@ -24,5 +31,5 @@ service:
     metrics:
       receivers: [ otlp ]
       processors: [ batch ]
-      exporters: [ otlp_http/prometheus ]
+      exporters: [ otlp/noop-receiver ]
 
