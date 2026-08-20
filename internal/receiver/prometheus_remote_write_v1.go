@@ -8,6 +8,7 @@ import (
 	prompb "github.com/prometheus/prometheus/prompb"
 	"io"
 	"log"
+	"sync/atomic"
 )
 
 var (
@@ -21,6 +22,7 @@ var (
 	// ever applied, so it's comparable across exporters/compression
 	// algorithms rather than reflecting each one's compression ratio.
 	prometheusRemoteWriteV1RequestSizeBytes = metrics.NewHistogram(`request_size_bytes{path="/api/v1/write"}`)
+	prometheusRemoteWriteV1SampleCounter    atomic.Uint64
 )
 
 func NewPrometheusRemoteWriteV1Route(r *gin.Engine) {
@@ -59,6 +61,9 @@ func NewPrometheusRemoteWriteV1Route(r *gin.Engine) {
 			log.Printf("json unmarshal write request err: %v\n", err)
 			prometheusRemoteWriteV1DecodeErrorTotal.Inc()
 			return
+		}
+		if n, ok := sampleEvery(&prometheusRemoteWriteV1SampleCounter); ok {
+			logSampleJSON("remote write v1", n, writeRequest)
 		}
 
 		ts := writeRequest.GetTimeseries()

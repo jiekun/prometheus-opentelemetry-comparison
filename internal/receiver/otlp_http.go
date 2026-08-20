@@ -7,6 +7,7 @@ import (
 	"google.golang.org/protobuf/proto"
 	"io"
 	"log"
+	"sync/atomic"
 )
 
 var (
@@ -19,6 +20,7 @@ var (
 	// comment - it's only ever fed uncompressed traffic by design), so this
 	// is already the uncompressed payload size.
 	otlpHTTPExportRequestSizeBytes = metrics.NewHistogram(`request_size_bytes{path="/otlp/export"}`)
+	otlpHTTPExportSampleCounter    atomic.Uint64
 )
 
 func NewOTLPHTTPRoute(r *gin.Engine) {
@@ -36,6 +38,9 @@ func NewOTLPHTTPRoute(r *gin.Engine) {
 			log.Printf("proto.Unmarshal err: %v\n", err)
 			otlpHTTPExportDecodeErrorTotal.Inc()
 			return
+		}
+		if n, ok := sampleEvery(&otlpHTTPExportSampleCounter); ok {
+			logSampleProtoJSON("otlp http", n, req)
 		}
 
 		otlpHTTPExportSampleTotal.Add(countSamples(req))

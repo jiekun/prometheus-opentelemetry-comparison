@@ -6,6 +6,7 @@
 // Prometheus client SDK, staying within data types both models support:
 //
 //   - http_requests_total          Counter        <-> Prometheus Counter
+//   - http_request_duration_seconds Histogram      <-> Prometheus Histogram (same buckets)
 //   - http_requests_in_flight      UpDownCounter  <-> Prometheus Gauge (Inc/Dec)
 //   - worker_queue_depth           Gauge          <-> Prometheus Gauge (Set)
 //   - process_heap_alloc_bytes     Gauge          <-> Prometheus Gauge (Set)
@@ -16,13 +17,13 @@
 //   - go_threads                   Gauge          <-> Prometheus Gauge (Set)
 //   - go_gc_cycles_total           Counter        <-> Prometheus Counter
 //
-// Deliberately no Histogram instrument (tmp - histograms unconditionally
-// export every configured bucket boundary as its own series regardless of
-// what data arrives, which this comparison wants to avoid for now): every
-// per-request instrument here is a Counter, Gauge or UpDownCounter,
-// including the manual, counter-based bucketed-latency approximation
-// (durationSum/durationCount/responseSize/lastDuration/latencyBucket/
-// concurrencyLevel/outcomeClass in newInstruments below). Most of them
+// Alongside those, each request also records a set of non-histogram
+// instruments (durationSum/durationCount/responseSize/lastDuration/
+// latencyBucket/concurrencyLevel/outcomeClass in newInstruments below) that
+// exist to counterbalance the histogram above in the comparison: a
+// histogram unconditionally exports every configured bucket boundary as its
+// own series regardless of what data arrives, whereas a plain counter/gauge
+// only ever exports the label combinations actually observed. Most of them
 // carry a synthetic "shard" attribute (see shardLabel) chosen by an
 // independent random draw that has no bearing on request processing, purely
 // to give them realistic label cardinality to export.
@@ -66,18 +67,21 @@ import (
 	"github.com/jiekun/prometheus-opentelemetry-comparison/internal/procstats"
 )
 
-// durationBuckets matches the bucket boundaries used in
-// cmd/prometheus-app/main.go, so the two apps' manual, counter-based
-// latencyBucket approximation (see latencyBucketLabel below) bucket latency
-// identically. Boundaries are sized to simulateLatency's actual range
-// across handleAPI1 through handleAPI50 (roughly 11ms-411ms, each
-// endpoint's fixed mean +/-10%).
+// durationBuckets matches the bucket boundaries used for the Prometheus
+// histogram in cmd/prometheus-app/main.go, so the two histograms bucket
+// latency identically. Boundaries are sized to simulateLatency's actual
+// range across handleAPI1 through handleAPI50 (roughly 11ms-411ms, each
+// endpoint's fixed mean +/-10%) rather than Prometheus's stock defaults.
+// Kept deliberately few (8, fewer than Prometheus's own 11 stock buckets)
+// since every added boundary is another series the histogram exports
+// unconditionally - see the package doc comment above.
 var durationBuckets = []float64{
 	0.01, 0.025, 0.05, 0.1, 0.15, 0.25, 0.35, 0.5,
 }
 
 type otelMetrics struct {
 	requestsTotal    metric.Int64Counter
+	requestDuration  metric.Float64Histogram
 	requestsInFlight metric.Int64UpDownCounter
 	queueDepth       metric.Float64Gauge
 	heapAlloc        metric.Int64Gauge
@@ -102,6 +106,11 @@ type otelMetrics struct {
 func newInstruments(meter metric.Meter) *otelMetrics {
 	requestsTotal, _ := meter.Int64Counter("http_requests_total",
 		metric.WithDescription("Total number of HTTP requests processed, by method, path and status code."),
+	)
+	requestDuration, _ := meter.Float64Histogram("http_request_duration_seconds",
+		metric.WithDescription("HTTP request duration in seconds, by method and path."),
+		metric.WithUnit("s"),
+		metric.WithExplicitBucketBoundaries(durationBuckets...),
 	)
 	requestsInFlight, _ := meter.Int64UpDownCounter("http_requests_in_flight",
 		metric.WithDescription("Number of HTTP requests currently being served, by path."),
@@ -160,6 +169,7 @@ func newInstruments(meter metric.Meter) *otelMetrics {
 	)
 	return &otelMetrics{
 		requestsTotal:    requestsTotal,
+		requestDuration:  requestDuration,
 		requestsInFlight: requestsInFlight,
 		queueDepth:       queueDepth,
 		heapAlloc:        heapAlloc,
@@ -255,9 +265,8 @@ func outcomeClassLabel(elapsedSeconds float64) string {
 }
 
 // instrument wraps next with the request-scoped metrics common to every
-// route: in-flight up-down counter and status counter, plus the additional
-// per-request instruments on otelMetrics (all Counter/Gauge/UpDownCounter -
-// see the package doc comment above for why there's no Histogram).
+// route: in-flight up-down counter, duration histogram and status counter,
+// plus the additional non-histogram instruments on otelMetrics.
 func (m *otelMetrics) instrument(path string, next http.HandlerFunc) http.HandlerFunc {
 	pathAttr := attribute.String("path", path)
 	inflight := &atomic.Int64{}
@@ -278,6 +287,7 @@ func (m *otelMetrics) instrument(path string, next http.HandlerFunc) http.Handle
 		next(rec, r)
 		elapsed := time.Since(start).Seconds()
 
+		m.requestDuration.Record(ctx, elapsed, metric.WithAttributes(methodAttr, pathAttr))
 		m.requestsTotal.Add(ctx, 1, metric.WithAttributes(methodAttr, pathAttr, attribute.String("status", strconv.Itoa(rec.status))))
 
 		pathShard := metric.WithAttributes(pathAttr, shardAttr)

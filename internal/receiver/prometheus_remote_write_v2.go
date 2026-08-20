@@ -9,6 +9,7 @@ import (
 	"io"
 	"log"
 	"strconv"
+	"sync/atomic"
 )
 
 var (
@@ -23,6 +24,7 @@ var (
 	// one's compression ratio. Shared across both branches below since the
 	// decompressed size doesn't depend on which algorithm compressed it.
 	prometheusRemoteWriteV2RequestSizeBytes = metrics.NewHistogram(`request_size_bytes{path="/api/v2/write"}`)
+	prometheusRemoteWriteV2SampleCounter    atomic.Uint64
 )
 
 func NewPrometheusRemoteWriteV2Route(r *gin.Engine) {
@@ -69,6 +71,9 @@ func NewPrometheusRemoteWriteV2Route(r *gin.Engine) {
 			log.Printf("json unmarshal write request err: %v\n", err)
 			prometheusRemoteWriteV2DecodeErrorTotal.Inc()
 			return
+		}
+		if n, ok := sampleEvery(&prometheusRemoteWriteV2SampleCounter); ok {
+			logSampleJSON("remote write v2", n, request)
 		}
 		ts := request.GetTimeseries()
 		for i := range ts {
