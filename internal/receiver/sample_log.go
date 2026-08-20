@@ -13,7 +13,7 @@ import (
 // route below logs a full JSON dump of the decoded request body, purely as
 // a human-readable example of the wire format each protocol actually sends
 // - not for production observability.
-const logSampleRate = 100
+const logSampleRate = 10000
 
 // sampleEvery increments counter and reports whether this call lands on a
 // sampled request: the 1st, then every logSampleRate-th one after that, so
@@ -26,25 +26,33 @@ func sampleEvery(counter *atomic.Uint64) (n uint64, sampled bool) {
 
 // logSampleJSON logs v - a gogo/protobuf-generated message such as
 // prompb.WriteRequest, which already carries its own encoding/json struct
-// tags - as indented JSON.
-func logSampleJSON(route string, n uint64, v any) {
+// tags - as indented JSON, alongside byteSize (the request body's size in
+// bytes, uncompressed - i.e. before whatever compression the sender
+// applied, not the size of the JSON dump below it) and dataPoints (the
+// number of data points the request carries, counting each histogram
+// bucket as its own point - see countRemoteWriteV1/V2DataPoints and
+// countSamples).
+func logSampleJSON(route string, n uint64, byteSize, dataPoints int, v any) {
 	b, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
 		log.Printf("%s: sample #%d: json.MarshalIndent err: %v", route, n, err)
 		return
 	}
-	log.Printf("%s: sample request #%d, decoded:\n%s", route, n, b)
+	log.Printf("%s: sample request #%d, %d bytes uncompressed, %d data points, decoded:\n%s",
+		route, n, byteSize, dataPoints, b)
 }
 
 // logSampleProtoJSON logs m - a google.golang.org/protobuf message, such as
 // the OTLP types - as indented JSON via protojson, which (unlike
 // encoding/json, and unlike logSampleJSON's messages) understands
-// protobuf's field naming and well-known types.
-func logSampleProtoJSON(route string, n uint64, m proto.Message) {
+// protobuf's field naming and well-known types. byteSize and dataPoints are
+// as in logSampleJSON.
+func logSampleProtoJSON(route string, n uint64, byteSize, dataPoints int, m proto.Message) {
 	b, err := (protojson.MarshalOptions{Multiline: true, Indent: "  "}).Marshal(m)
 	if err != nil {
 		log.Printf("%s: sample #%d: protojson.Marshal err: %v", route, n, err)
 		return
 	}
-	log.Printf("%s: sample request #%d, decoded:\n%s", route, n, b)
+	log.Printf("%s: sample request #%d, %d bytes uncompressed, %d data points, decoded:\n%s",
+		route, n, byteSize, dataPoints, b)
 }

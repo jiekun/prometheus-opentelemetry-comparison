@@ -35,9 +35,10 @@ func NewOTLPMetricsEndpoint(grpcServer *grpc.Server) {
 
 func (s *noopOTLPMetricsServer) Export(ctx context.Context, req *otlp.ExportMetricsServiceRequest) (*otlp.ExportMetricsServiceResponse, error) {
 	otlpExportRequestTotal.Inc()
-	otlpExportRequestSizeBytes.Update(float64(proto.Size(req)))
+	size := proto.Size(req)
+	otlpExportRequestSizeBytes.Update(float64(size))
 	if n, ok := sampleEvery(&otlpExportSampleCounter); ok {
-		logSampleProtoJSON("otlp grpc", n, req)
+		logSampleProtoJSON("otlp grpc", n, size, countSamples(req), req)
 	}
 	otlpExportSampleTotal.Add(countSamples(req))
 	return &otlp.ExportMetricsServiceResponse{}, nil

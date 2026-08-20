@@ -40,7 +40,7 @@ func NewOTLPHTTPRoute(r *gin.Engine) {
 			return
 		}
 		if n, ok := sampleEvery(&otlpHTTPExportSampleCounter); ok {
-			logSampleProtoJSON("otlp http", n, req)
+			logSampleProtoJSON("otlp http", n, len(b), countSamples(req), req)
 		}
 
 		otlpHTTPExportSampleTotal.Add(countSamples(req))

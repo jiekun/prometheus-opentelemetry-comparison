@@ -63,7 +63,7 @@ func NewPrometheusRemoteWriteV1Route(r *gin.Engine) {
 			return
 		}
 		if n, ok := sampleEvery(&prometheusRemoteWriteV1SampleCounter); ok {
-			logSampleJSON("remote write v1", n, writeRequest)
+			logSampleJSON("remote write v1", n, len(body), countRemoteWriteV1DataPoints(writeRequest), writeRequest)
 		}
 
 		ts := writeRequest.GetTimeseries()
