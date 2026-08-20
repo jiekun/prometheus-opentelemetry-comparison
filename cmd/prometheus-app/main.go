@@ -59,13 +59,15 @@ import (
 
 // durationBuckets is shared (in spirit) with the explicit bucket
 // boundaries used for the OTel histogram in cmd/otel-app/main.go, so the
-// two histograms bucket latency identically. Boundaries are sized to the
-// actual time.Sleep ranges used by the handlers below (2ms-550ms, see
-// handleAPI1 through handleAPI50) rather than Prometheus's stock
-// defaults - still more buckets than those (11), but not exhaustively so.
+// two histograms bucket latency identically. Boundaries are sized to
+// simulateLatency's actual range across handleAPI1 through handleAPI50
+// (roughly 11ms-411ms, each endpoint's fixed mean +/-10%) rather than
+// Prometheus's stock defaults. Kept deliberately few (8, fewer than
+// Prometheus's own 11 stock buckets) since every added boundary is another
+// series the histogram exports unconditionally - see the package doc
+// comment above.
 var durationBuckets = []float64{
-	0.002, 0.005, 0.01, 0.02, 0.03, 0.04, 0.05, 0.07,
-	0.1, 0.15, 0.2, 0.3, 0.4, 0.5, 0.7, 0.8, 1, 2.5, 5, 10,
+	0.01, 0.025, 0.05, 0.1, 0.15, 0.25, 0.35, 0.5,
 }
 
 type prometheusMetrics struct {
@@ -177,11 +179,13 @@ func newMetrics(reg prometheus.Registerer) *prometheusMetrics {
 	return m
 }
 
-// statusRecorder captures the status code written by a handler so it can
-// be used as a metric label after the handler returns.
+// statusRecorder captures the status code and response byte count written
+// by a handler so both can be used as metric labels/values after the
+// handler returns.
 type statusRecorder struct {
 	http.ResponseWriter
 	status int
+	bytes  int
 }
 
 func (r *statusRecorder) WriteHeader(status int) {
@@ -189,12 +193,81 @@ func (r *statusRecorder) WriteHeader(status int) {
 	r.ResponseWriter.WriteHeader(status)
 }
 
+func (r *statusRecorder) Write(b []byte) (int, error) {
+	n, err := r.ResponseWriter.Write(b)
+	r.bytes += n
+	return n, err
+}
+
+const shardCount = 8
+
+// shardLabel returns one of a fixed set of synthetic label values, chosen by
+// an independent random draw that has nothing to do with request
+// processing. It exists purely to give the counters below realistic label
+// cardinality to export - unlike a histogram, which always exports every
+// configured bucket regardless of the data, a plain counter/gauge only ever
+// exports the label combinations it actually observes.
+func shardLabel() string {
+	return "shard-" + strconv.Itoa(rand.IntN(shardCount))
+}
+
+// latencyBucketLabel returns the smallest duration-bucket boundary (from
+// durationBuckets) that's >= elapsedSeconds, or "+Inf" if it exceeds them
+// all - the same cumulative-bucket convention the histogram above uses,
+// reimplemented by hand as a single Counter increment instead of a native
+// histogram Observe.
+func latencyBucketLabel(elapsedSeconds float64) string {
+	for _, b := range durationBuckets {
+		if elapsedSeconds <= b {
+			return strconv.FormatFloat(b, 'g', -1, 64)
+		}
+	}
+	return "+Inf"
+}
+
+// concurrencyLevelLabel classifies the in-flight request count for one path
+// (immediately after the current request was counted) into a small set of
+// levels.
+func concurrencyLevelLabel(level int64) string {
+	switch {
+	case level <= 1:
+		return "low"
+	case level <= 3:
+		return "medium"
+	case level <= 6:
+		return "high"
+	default:
+		return "saturated"
+	}
+}
+
+// outcomeClassLabel classifies a completed request's duration against fixed
+// latency thresholds shared by every endpoint.
+func outcomeClassLabel(elapsedSeconds float64) string {
+	switch {
+	case elapsedSeconds < 0.1:
+		return "normal"
+	case elapsedSeconds < 0.25:
+		return "slow"
+	default:
+		return "critical"
+	}
+}
+
 // instrument wraps next with the request-scoped metrics common to every
-// route: in-flight gauge, duration histogram and status counter.
+// route: in-flight gauge, duration histogram and status counter, plus the
+// additional non-histogram instruments on prometheusMetrics.
 func (m *prometheusMetrics) instrument(path string, next http.HandlerFunc) http.HandlerFunc {
+	inflight := &atomic.Int64{}
 	return func(w http.ResponseWriter, r *http.Request) {
+		shard := shardLabel()
+
 		m.requestsInFlight.WithLabelValues(path).Inc()
-		defer m.requestsInFlight.WithLabelValues(path).Dec()
+		level := inflight.Add(1)
+		defer func() {
+			m.requestsInFlight.WithLabelValues(path).Dec()
+			inflight.Add(-1)
+		}()
 
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		start := time.Now()
@@ -203,6 +276,14 @@ func (m *prometheusMetrics) instrument(path string, next http.HandlerFunc) http.
 
 		m.requestDuration.WithLabelValues(r.Method, path).Observe(elapsed)
 		m.requestsTotal.WithLabelValues(r.Method, path, strconv.Itoa(rec.status)).Inc()
+
+		m.durationSum.WithLabelValues(path, shard).Add(elapsed)
+		m.durationCount.WithLabelValues(path, shard).Inc()
+		m.responseSize.WithLabelValues(path, shard).Add(float64(rec.bytes))
+		m.lastDuration.WithLabelValues(path, shard).Set(elapsed)
+		m.latencyBucket.WithLabelValues(path, shard, latencyBucketLabel(elapsed)).Inc()
+		m.concurrencyLevel.WithLabelValues(path, shard, concurrencyLevelLabel(level)).Inc()
+		m.outcomeClass.WithLabelValues(path, shard, outcomeClassLabel(elapsed)).Inc()
 	}
 }
 

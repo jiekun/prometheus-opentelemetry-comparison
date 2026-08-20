@@ -68,13 +68,14 @@ import (
 
 // durationBuckets matches the bucket boundaries used for the Prometheus
 // histogram in cmd/prometheus-app/main.go, so the two histograms bucket
-// latency identically. Boundaries are sized to the actual time.Sleep
-// ranges used by the handlers below (2ms-550ms, see handleAPI1 through
-// handleAPI50) rather than Prometheus's stock defaults - still more
-// buckets than those (11), but not exhaustively so.
+// latency identically. Boundaries are sized to simulateLatency's actual
+// range across handleAPI1 through handleAPI50 (roughly 11ms-411ms, each
+// endpoint's fixed mean +/-10%) rather than Prometheus's stock defaults.
+// Kept deliberately few (8, fewer than Prometheus's own 11 stock buckets)
+// since every added boundary is another series the histogram exports
+// unconditionally - see the package doc comment above.
 var durationBuckets = []float64{
-	0.002, 0.005, 0.01, 0.02, 0.03, 0.04, 0.05, 0.07,
-	0.1, 0.15, 0.2, 0.3, 0.4, 0.5, 0.7, 0.8, 1, 2.5, 5, 10,
+	0.01, 0.025, 0.05, 0.1, 0.15, 0.25, 0.35, 0.5,
 }
 
 type otelMetrics struct {
