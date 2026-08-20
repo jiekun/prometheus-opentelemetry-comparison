@@ -40,6 +40,9 @@ scrape_configs:
       - targets: [10.140.15.203:9100]
         labels:
           host_name: uninstrumented-app-1
+      - targets: [10.140.15.204:9100]
+        labels:
+          host_name: vmagent
   - job_name: component-self-metrics
     static_configs:
       - targets: [10.140.15.202:9200]
@@ -51,3 +54,6 @@ scrape_configs:
       - targets: [ 10.140.15.200:8888 ]
         labels:
           host_name: opentelemetry-collector-agent
+      - targets: [10.140.15.204:8429]
+        labels:
+          host_name: vmagent
