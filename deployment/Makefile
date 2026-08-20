@@ -34,9 +34,22 @@ HOST_IP ?= $(shell hostname -I | awk '{print $$1}')
 # on $(PORT_START)-$(PORT_END) (100 ports), for 500 targets total.
 CLIENT_HOSTS ?= 10.140.15.196 10.140.15.197 10.140.15.194 10.140.15.195 10.140.15.203
 
+# The "-1" host of each app (matches the host_name labels in
+# deployment/docker/backend/prometheus.yaml), used by collect-profiles below.
+OTEL_APP_1_HOST           ?= 35.234.13.172
+PROMETHEUS_APP_1_HOST     ?= 34.81.241.81
+UNINSTRUMENTED_APP_1_HOST ?= 34.81.251.210
+
+# Single port (one specific instance out of the $(PORT_START)-$(PORT_END)
+# range) that collect-profiles pulls from on each host.
+PROFILE_PORT    ?= 8001
+PROFILE_SECONDS ?= 30
+PROFILE_DIR     ?= $(BIN_DIR)/profiles
+
 .PHONY: all otel-app prometheus-app uninstrumented-app client clean tar \
 	run-otel-app run-prometheus-app run-uninstrumented-app run-client \
-	stop-otel-app stop-prometheus-app stop-uninstrumented-app stop-client stop
+	stop-otel-app stop-prometheus-app stop-uninstrumented-app stop-client stop \
+	collect-profiles
 
 all: otel-app prometheus-app uninstrumented-app client
 
@@ -112,6 +125,29 @@ run-client: client
 	CLIENT_TARGETS="$$targets" nohup $(BIN_DIR)/client > $(LOG_DIR)/client.log 2>&1 & \
 	echo $$! > $(LOG_DIR)/client.pid; \
 	echo "started client (1 process) against $$(echo "$$targets" | tr ',' '\n' | wc -l) targets (log: $(LOG_DIR)/client.log, pid: $(LOG_DIR)/client.pid)"
+
+# Pulls a heap profile then a CPU profile (see cmd/*/main.go's
+# /debug/pprof/* handlers) from one instance - port $(PROFILE_PORT), the
+# same port on every host - of otel-app-1, prometheus-app-1 and
+# uninstrumented-app-1. All three hosts are fetched in parallel (the trailing
+# "&" on each host's subshell, followed by "wait"), so every app is caught in
+# the same window of wall-clock time; that only matters relative to the other
+# apps, not within a single host, so heap and profile are still fetched
+# sequentially per host - heap first, since /debug/pprof/profile blocks for
+# $(PROFILE_SECONDS)s and fetching it first would skew the heap snapshot
+# towards "after 30s of CPU profiling" rather than "at the moment requested".
+collect-profiles:
+	@mkdir -p $(PROFILE_DIR)
+	@ts=$$(date +%Y%m%d-%H%M%S); \
+	for pair in "otel-app-1:$(OTEL_APP_1_HOST)" "prometheus-app-1:$(PROMETHEUS_APP_1_HOST)" "uninstrumented-app-1:$(UNINSTRUMENTED_APP_1_HOST)"; do \
+		name=$${pair%%:*}; host=$${pair#*:}; \
+		( curl -sf "http://$$host:$(PROFILE_PORT)/debug/pprof/heap" -o "$(PROFILE_DIR)/$$name-$$ts-heap.pprof" \
+		  && curl -sf "http://$$host:$(PROFILE_PORT)/debug/pprof/profile?seconds=$(PROFILE_SECONDS)" -o "$(PROFILE_DIR)/$$name-$$ts-cpu.pprof" \
+		  && echo "done: $$name ($$host:$(PROFILE_PORT))" \
+		  || echo "FAILED: $$name ($$host:$(PROFILE_PORT))" ) & \
+	done; \
+	wait; \
+	echo "profiles written to $(PROFILE_DIR)"
 
 stop-otel-app:
 	@if [ -f $(LOG_DIR)/otel-app.pids ]; then \
