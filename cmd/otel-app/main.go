@@ -47,6 +47,7 @@ import (
 	"log"
 	"math/rand/v2"
 	"net/http"
+	httppprof "net/http/pprof"
 	"os"
 	"os/signal"
 	"runtime"
@@ -859,6 +860,16 @@ func main() {
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
+	// net/http/pprof's init() only registers these on http.DefaultServeMux;
+	// since this app uses its own mux, they're wired up by hand instead.
+	// /debug/pprof/profile serves a CPU profile (30s sample by default, or
+	// ?seconds=N); /debug/pprof/heap serves a memory profile - both
+	// fetchable directly, e.g. `go tool pprof http://host:port/debug/pprof/profile`.
+	mux.HandleFunc("/debug/pprof/", httppprof.Index)
+	mux.HandleFunc("/debug/pprof/cmdline", httppprof.Cmdline)
+	mux.HandleFunc("/debug/pprof/profile", httppprof.Profile)
+	mux.HandleFunc("/debug/pprof/symbol", httppprof.Symbol)
+	mux.HandleFunc("/debug/pprof/trace", httppprof.Trace)
 	mux.Handle("/api/api1", m.instrument("/api/api1", handleAPI1))
 	mux.Handle("/api/api2", m.instrument("/api/api2", handleAPI2))
 	mux.Handle("/api/api3", m.instrument("/api/api3", handleAPI3))

@@ -35,6 +35,7 @@ import (
 	"math/rand/v2"
 	"net"
 	"net/http"
+	"net/http/pprof"
 	"net/url"
 	"os"
 	"os/signal"
@@ -314,9 +315,19 @@ func main() {
 	metrics := newClientMetrics(reg)
 	metricsMux := http.NewServeMux()
 	metricsMux.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
+	// net/http/pprof's init() only registers these on http.DefaultServeMux;
+	// since this app uses its own mux, they're wired up by hand instead.
+	// /debug/pprof/profile serves a CPU profile (30s sample by default, or
+	// ?seconds=N); /debug/pprof/heap serves a memory profile - both
+	// fetchable directly, e.g. `go tool pprof http://host:port/debug/pprof/profile`.
+	metricsMux.HandleFunc("/debug/pprof/", pprof.Index)
+	metricsMux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+	metricsMux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+	metricsMux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+	metricsMux.HandleFunc("/debug/pprof/trace", pprof.Trace)
 	metricsSrv := &http.Server{Addr: metricsAddr, Handler: metricsMux}
 	go func() {
-		log.Printf("client metrics listening on %s (metrics at /metrics)", metricsAddr)
+		log.Printf("client metrics listening on %s (metrics at /metrics, profiles at /debug/pprof/)", metricsAddr)
 		if err := metricsSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("metrics listen: %v", err)
 		}
