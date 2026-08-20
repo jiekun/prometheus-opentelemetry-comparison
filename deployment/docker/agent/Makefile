@@ -2,8 +2,8 @@ AGENT_DIR         := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 AGENT_BIN_DIR     := $(abspath $(AGENT_DIR)../../../bin)
 
 OTEL_VERSION      ?= 0.159.0
-OTEL_TARBALL      := otelcol_$(OTEL_VERSION)_linux_amd64.tar.gz
-OTEL_BIN          := $(AGENT_BIN_DIR)/otelcol
+OTEL_TARBALL      := otelcol-contrib_$(OTEL_VERSION)_linux_amd64.tar.gz
+OTEL_BIN          := $(AGENT_BIN_DIR)/otelcol-contrib
 OTEL_CONFIG       := $(AGENT_DIR)opentelemetry-collector.yaml
 OTEL_LOG          := $(AGENT_BIN_DIR)/otel_agent.log
 OTEL_PID          := $(AGENT_BIN_DIR)/otel_agent.pid
