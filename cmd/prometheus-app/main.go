@@ -18,6 +18,17 @@
 //   - go_threads                   Gauge     <-> OTel synchronous Gauge
 //   - go_gc_cycles_total           Counter   <-> OTel Counter
 //
+// Alongside those, each request also records a set of non-histogram
+// instruments (durationSum/durationCount/responseSize/lastDuration/
+// latencyBucket/concurrencyLevel/outcomeClass in newMetrics below) that
+// exist to counterbalance the histogram above in the comparison: a
+// histogram unconditionally exports every configured bucket boundary as its
+// own series regardless of what data arrives, whereas a plain counter/gauge
+// only ever exports the label combinations actually observed. Most of them
+// carry a synthetic "shard" label (see shardLabel) chosen by an independent
+// random draw that has no bearing on request processing, purely to give
+// them realistic label cardinality to export.
+//
 // A custom (non-default) registry is used so this app doesn't pull in the
 // standard Go/process collectors wholesale: those expose far more series
 // than the OTel side has an equivalent for, which would make the two
@@ -36,6 +47,7 @@ import (
 	"runtime"
 	"runtime/pprof"
 	"strconv"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -68,6 +80,16 @@ type prometheusMetrics struct {
 	goroutines       prometheus.Gauge
 	threads          prometheus.Gauge
 	gcCycles         prometheus.Counter
+
+	// Additional non-histogram, per-request instruments - see the package
+	// doc comment above for why these exist.
+	durationSum      *prometheus.CounterVec
+	durationCount    *prometheus.CounterVec
+	responseSize     *prometheus.CounterVec
+	lastDuration     *prometheus.GaugeVec
+	latencyBucket    *prometheus.CounterVec
+	concurrencyLevel *prometheus.CounterVec
+	outcomeClass     *prometheus.CounterVec
 }
 
 func newMetrics(reg prometheus.Registerer) *prometheusMetrics {
@@ -117,10 +139,40 @@ func newMetrics(reg prometheus.Registerer) *prometheusMetrics {
 			Name: "go_gc_cycles_total",
 			Help: "Number of completed GC cycles, as reported by the Go runtime (runtime.MemStats.NumGC).",
 		}),
+		durationSum: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "http_request_duration_sum_seconds_total",
+			Help: "Sum of HTTP request durations in seconds, by path and shard - a manual, counter-based equivalent of the histogram's _sum.",
+		}, []string{"path", "shard"}),
+		durationCount: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "http_request_duration_count_total",
+			Help: "Count of HTTP request durations recorded, by path and shard - a manual, counter-based equivalent of the histogram's _count.",
+		}, []string{"path", "shard"}),
+		responseSize: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "http_response_size_bytes_total",
+			Help: "Total bytes written in HTTP responses, by path and shard.",
+		}, []string{"path", "shard"}),
+		lastDuration: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "http_request_last_duration_seconds",
+			Help: "Duration in seconds of the most recently completed HTTP request, by path and shard.",
+		}, []string{"path", "shard"}),
+		latencyBucket: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "http_request_latency_bucket_total",
+			Help: "Count of HTTP requests whose duration fell in a given latency bucket, by path, shard and le - a manual, counter-based equivalent of the histogram's per-bucket counts.",
+		}, []string{"path", "shard", "le"}),
+		concurrencyLevel: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "http_requests_concurrency_level_total",
+			Help: "Count of HTTP requests started, classified by the in-flight request count for that path at start time, by path, shard and level.",
+		}, []string{"path", "shard", "level"}),
+		outcomeClass: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "http_requests_outcome_class_total",
+			Help: "Count of HTTP requests, classified by completed duration against fixed latency thresholds, by path, shard and class.",
+		}, []string{"path", "shard", "class"}),
 	}
 	reg.MustRegister(
 		m.requestsTotal, m.requestDuration, m.requestsInFlight, m.queueDepth, m.heapAlloc,
 		m.cpuSeconds, m.residentMemory, m.virtualMemory, m.goroutines, m.threads, m.gcCycles,
+		m.durationSum, m.durationCount, m.responseSize, m.lastDuration, m.latencyBucket,
+		m.concurrencyLevel, m.outcomeClass,
 	)
 	return m
 }

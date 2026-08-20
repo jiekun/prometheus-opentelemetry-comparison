@@ -17,6 +17,17 @@
 //   - go_threads                   Gauge          <-> Prometheus Gauge (Set)
 //   - go_gc_cycles_total           Counter        <-> Prometheus Counter
 //
+// Alongside those, each request also records a set of non-histogram
+// instruments (durationSum/durationCount/responseSize/lastDuration/
+// latencyBucket/concurrencyLevel/outcomeClass in newInstruments below) that
+// exist to counterbalance the histogram above in the comparison: a
+// histogram unconditionally exports every configured bucket boundary as its
+// own series regardless of what data arrives, whereas a plain counter/gauge
+// only ever exports the label combinations actually observed. Most of them
+// carry a synthetic "shard" attribute (see shardLabel) chosen by an
+// independent random draw that has no bearing on request processing, purely
+// to give them realistic label cardinality to export.
+//
 // Deliberately avoided: OTel's delta temporality (Prometheus only
 // understands cumulative series, so the periodic reader is left at its
 // default CumulativeTemporality) and exponential histograms / summaries
@@ -41,6 +52,7 @@ import (
 	"runtime"
 	"runtime/pprof"
 	"strconv"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -77,6 +89,16 @@ type otelMetrics struct {
 	goroutines       metric.Int64Gauge
 	threads          metric.Int64Gauge
 	gcCycles         metric.Int64Counter
+
+	// Additional non-histogram, per-request instruments - see the package
+	// doc comment above for why these exist.
+	durationSum      metric.Float64Counter
+	durationCount    metric.Int64Counter
+	responseSize     metric.Int64Counter
+	lastDuration     metric.Float64Gauge
+	latencyBucket    metric.Int64Counter
+	concurrencyLevel metric.Int64Counter
+	outcomeClass     metric.Int64Counter
 }
 
 func newInstruments(meter metric.Meter) *otelMetrics {
@@ -119,6 +141,30 @@ func newInstruments(meter metric.Meter) *otelMetrics {
 	gcCycles, _ := meter.Int64Counter("go_gc_cycles_total",
 		metric.WithDescription("Number of completed GC cycles, as reported by the Go runtime (runtime.MemStats.NumGC)."),
 	)
+	durationSum, _ := meter.Float64Counter("http_request_duration_sum_seconds_total",
+		metric.WithDescription("Sum of HTTP request durations in seconds, by path and shard - a manual, counter-based equivalent of the histogram's _sum."),
+		metric.WithUnit("s"),
+	)
+	durationCount, _ := meter.Int64Counter("http_request_duration_count_total",
+		metric.WithDescription("Count of HTTP request durations recorded, by path and shard - a manual, counter-based equivalent of the histogram's _count."),
+	)
+	responseSize, _ := meter.Int64Counter("http_response_size_bytes_total",
+		metric.WithDescription("Total bytes written in HTTP responses, by path and shard."),
+		metric.WithUnit("By"),
+	)
+	lastDuration, _ := meter.Float64Gauge("http_request_last_duration_seconds",
+		metric.WithDescription("Duration in seconds of the most recently completed HTTP request, by path and shard."),
+		metric.WithUnit("s"),
+	)
+	latencyBucket, _ := meter.Int64Counter("http_request_latency_bucket_total",
+		metric.WithDescription("Count of HTTP requests whose duration fell in a given latency bucket, by path, shard and le - a manual, counter-based equivalent of the histogram's per-bucket counts."),
+	)
+	concurrencyLevel, _ := meter.Int64Counter("http_requests_concurrency_level_total",
+		metric.WithDescription("Count of HTTP requests started, classified by the in-flight request count for that path at start time, by path, shard and level."),
+	)
+	outcomeClass, _ := meter.Int64Counter("http_requests_outcome_class_total",
+		metric.WithDescription("Count of HTTP requests, classified by completed duration against fixed latency thresholds, by path, shard and class."),
+	)
 	return &otelMetrics{
 		requestsTotal:    requestsTotal,
 		requestDuration:  requestDuration,
@@ -131,14 +177,23 @@ func newInstruments(meter metric.Meter) *otelMetrics {
 		goroutines:       goroutines,
 		threads:          threads,
 		gcCycles:         gcCycles,
+		durationSum:      durationSum,
+		durationCount:    durationCount,
+		responseSize:     responseSize,
+		lastDuration:     lastDuration,
+		latencyBucket:    latencyBucket,
+		concurrencyLevel: concurrencyLevel,
+		outcomeClass:     outcomeClass,
 	}
 }
 
-// statusRecorder captures the status code written by a handler so it can
-// be used as a metric attribute after the handler returns.
+// statusRecorder captures the status code and response byte count written
+// by a handler so both can be used as metric attributes/values after the
+// handler returns.
 type statusRecorder struct {
 	http.ResponseWriter
 	status int
+	bytes  int
 }
 
 func (r *statusRecorder) WriteHeader(status int) {
@@ -146,16 +201,84 @@ func (r *statusRecorder) WriteHeader(status int) {
 	r.ResponseWriter.WriteHeader(status)
 }
 
+func (r *statusRecorder) Write(b []byte) (int, error) {
+	n, err := r.ResponseWriter.Write(b)
+	r.bytes += n
+	return n, err
+}
+
+const shardCount = 8
+
+// shardLabel returns one of a fixed set of synthetic label values, chosen by
+// an independent random draw that has nothing to do with request
+// processing. It exists purely to give the counters below realistic label
+// cardinality to export - unlike a histogram, which always exports every
+// configured bucket regardless of the data, a plain counter/gauge only ever
+// exports the label combinations it actually observes.
+func shardLabel() string {
+	return "shard-" + strconv.Itoa(rand.IntN(shardCount))
+}
+
+// latencyBucketLabel returns the smallest duration-bucket boundary (from
+// durationBuckets) that's >= elapsedSeconds, or "+Inf" if it exceeds them
+// all - the same cumulative-bucket convention the histogram above uses,
+// reimplemented by hand as a single Counter increment instead of a native
+// histogram Record.
+func latencyBucketLabel(elapsedSeconds float64) string {
+	for _, b := range durationBuckets {
+		if elapsedSeconds <= b {
+			return strconv.FormatFloat(b, 'g', -1, 64)
+		}
+	}
+	return "+Inf"
+}
+
+// concurrencyLevelLabel classifies the in-flight request count for one path
+// (immediately after the current request was counted) into a small set of
+// levels.
+func concurrencyLevelLabel(level int64) string {
+	switch {
+	case level <= 1:
+		return "low"
+	case level <= 3:
+		return "medium"
+	case level <= 6:
+		return "high"
+	default:
+		return "saturated"
+	}
+}
+
+// outcomeClassLabel classifies a completed request's duration against fixed
+// latency thresholds shared by every endpoint.
+func outcomeClassLabel(elapsedSeconds float64) string {
+	switch {
+	case elapsedSeconds < 0.1:
+		return "normal"
+	case elapsedSeconds < 0.25:
+		return "slow"
+	default:
+		return "critical"
+	}
+}
+
 // instrument wraps next with the request-scoped metrics common to every
-// route: in-flight up-down counter, duration histogram and status counter.
+// route: in-flight up-down counter, duration histogram and status counter,
+// plus the additional non-histogram instruments on otelMetrics.
 func (m *otelMetrics) instrument(path string, next http.HandlerFunc) http.HandlerFunc {
 	pathAttr := attribute.String("path", path)
+	inflight := &atomic.Int64{}
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		methodAttr := attribute.String("method", r.Method)
+		shardAttr := attribute.String("shard", shardLabel())
 
 		m.requestsInFlight.Add(ctx, 1, metric.WithAttributes(pathAttr))
-		defer m.requestsInFlight.Add(ctx, -1, metric.WithAttributes(pathAttr))
+		level := inflight.Add(1)
+		defer func() {
+			m.requestsInFlight.Add(ctx, -1, metric.WithAttributes(pathAttr))
+			inflight.Add(-1)
+		}()
 
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		start := time.Now()
@@ -164,6 +287,15 @@ func (m *otelMetrics) instrument(path string, next http.HandlerFunc) http.Handle
 
 		m.requestDuration.Record(ctx, elapsed, metric.WithAttributes(methodAttr, pathAttr))
 		m.requestsTotal.Add(ctx, 1, metric.WithAttributes(methodAttr, pathAttr, attribute.String("status", strconv.Itoa(rec.status))))
+
+		pathShard := metric.WithAttributes(pathAttr, shardAttr)
+		m.durationSum.Add(ctx, elapsed, pathShard)
+		m.durationCount.Add(ctx, 1, pathShard)
+		m.responseSize.Add(ctx, int64(rec.bytes), pathShard)
+		m.lastDuration.Record(ctx, elapsed, pathShard)
+		m.latencyBucket.Add(ctx, 1, metric.WithAttributes(pathAttr, shardAttr, attribute.String("le", latencyBucketLabel(elapsed))))
+		m.concurrencyLevel.Add(ctx, 1, metric.WithAttributes(pathAttr, shardAttr, attribute.String("level", concurrencyLevelLabel(level))))
+		m.outcomeClass.Add(ctx, 1, metric.WithAttributes(pathAttr, shardAttr, attribute.String("class", outcomeClassLabel(elapsed))))
 	}
 }
 
