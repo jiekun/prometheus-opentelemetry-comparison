@@ -37,6 +37,9 @@ scrape_configs:
       - targets: [10.140.15.201:9100]
         labels:
           host_name: prometheus-backend
+      - targets: [10.140.15.203:9100]
+        labels:
+          host_name: uninstrumented-app-1
   - job_name: component-self-metrics
     static_configs:
       - targets: [10.140.15.202:9200]

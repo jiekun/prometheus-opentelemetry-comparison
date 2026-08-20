@@ -29,10 +29,10 @@ OTEL_EXPORTER_OTLP_METRICS_COMPRESSION ?= gzip
 # instance in this project); override if that's wrong for yours.
 HOST_IP ?= $(shell hostname -I | awk '{print $$1}')
 
-# Hosts run-client fires requests at - 2 otel-app instances and 2
-# prometheus-app instances, each listening on $(PORT_START)-$(PORT_END)
-# (100 ports), for 400 targets total.
-CLIENT_HOSTS ?= 10.140.15.196 10.140.15.197 10.140.15.194 10.140.15.195
+# Hosts run-client fires requests at - 2 otel-app instances, 2
+# prometheus-app instances and 1 uninstrumented-app instance, each listening
+# on $(PORT_START)-$(PORT_END) (100 ports), for 500 targets total.
+CLIENT_HOSTS ?= 10.140.15.196 10.140.15.197 10.140.15.194 10.140.15.195 10.140.15.203
 
 .PHONY: all otel-app prometheus-app uninstrumented-app client clean tar \
 	run-otel-app run-prometheus-app run-uninstrumented-app run-client \
