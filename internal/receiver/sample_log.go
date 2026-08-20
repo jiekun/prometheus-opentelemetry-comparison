@@ -20,6 +20,9 @@ const logSampleRate = 10000
 // each route logs an example immediately on startup rather than waiting
 // logSampleRate requests for the first one.
 func sampleEvery(counter *atomic.Uint64) (n uint64, sampled bool) {
+	if counter.Load() > 1000000 {
+		return n, false
+	}
 	n = counter.Add(1)
 	return n, (n-1)%logSampleRate == 0
 }
