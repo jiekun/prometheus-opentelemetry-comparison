@@ -16,6 +16,11 @@ var (
 	prometheusRemoteWriteV1DecodeErrorTotal      = metrics.NewCounter(`decode_error_total{path="/api/v1/write"}`)
 	prometheusRemoteWriteV1PrometheusSampleTotal = metrics.NewCounter(`sampled_total{path="/api/v1/write",exporter="prometheus-2"}`)
 	prometheusRemoteWriteV1VMAgentSampleTotal    = metrics.NewCounter(`sampled_total{path="/api/v1/write",exporter="vmagent"}`)
+	// Size of the request body after decompression (snappy or zstd,
+	// whichever the sender used) - the payload size before compression was
+	// ever applied, so it's comparable across exporters/compression
+	// algorithms rather than reflecting each one's compression ratio.
+	prometheusRemoteWriteV1RequestSizeBytes = metrics.NewHistogram(`request_size_bytes{path="/api/v1/write"}`)
 )
 
 func NewPrometheusRemoteWriteV1Route(r *gin.Engine) {
@@ -46,6 +51,7 @@ func NewPrometheusRemoteWriteV1Route(r *gin.Engine) {
 			prometheusRemoteWriteV1DecodeErrorTotal.Inc()
 			return
 		}
+		prometheusRemoteWriteV1RequestSizeBytes.Update(float64(len(body)))
 
 		writeRequest := &prompb.WriteRequest{}
 		err = writeRequest.Unmarshal(body)

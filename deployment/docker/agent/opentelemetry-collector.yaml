@@ -11,6 +11,10 @@ processors:
     send_batch_size: 10000
     timeout: 1s
 
+extensions:
+  file_storage:
+    directory: /home/jiekun/prometheus-opentelemetry-comparison/bin/otel-agent-storage
+
 exporters:
   # cmd/metrics-noop-receiver (deployment/docker/backend), running on the
   # same instance as the real Prometheus server (10.140.15.201) but on its
@@ -20,6 +24,8 @@ exporters:
   # before unmarshaling - it would just count every batch as a decode
   # error if this exporter used HTTP with compression enabled.
   otlp/noop-receiver:
+    sending_queue:
+      storage: file_storage
     endpoint: "10.140.15.201:8001"
     compression: gzip
     timeout: 10s
@@ -27,6 +33,7 @@ exporters:
       insecure: true
 
 service:
+  extensions: [file_storage]
   pipelines:
     metrics:
       receivers: [ otlp ]
