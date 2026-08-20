@@ -36,12 +36,12 @@ VMAGENT_REMOTE_WRITE_URL ?= http://10.140.15.201:8000/api/v1/write
 	init-prometheus-agent run-prometheus-agent stop-prometheus-agent \
 	init-vmagent run-vmagent stop-vmagent
 
-# Downloads the otelcol binary used by run-otel-agent. Safe to
+# Downloads the otelcol-contrib binary used by run-otel-agent. Safe to
 # re-run on the same instance.
 init-otel-agent:
 	mkdir -p $(AGENT_BIN_DIR)
 	wget -q https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v$(OTEL_VERSION)/$(OTEL_TARBALL) -O /tmp/$(OTEL_TARBALL)
-	tar -C $(AGENT_BIN_DIR) -xzf /tmp/$(OTEL_TARBALL) otelcol
+	tar -C $(AGENT_BIN_DIR) -xzf /tmp/$(OTEL_TARBALL) otelcol-contrib
 	rm -f /tmp/$(OTEL_TARBALL)
 
 run-otel-agent:
