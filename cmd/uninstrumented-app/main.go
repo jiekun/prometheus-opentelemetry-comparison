@@ -29,602 +29,417 @@ import (
 	"github.com/jiekun/prometheus-opentelemetry-comparison/internal/procstats"
 )
 
-// handleAPI1 simulates a generic endpoint with variable latency and an
-// occasional server error.
+// simulateLatency sleeps for meanMillis +/- 10%, uniformly at random. Every
+// endpoint has its own fixed mean latency, but the per-request jitter around
+// that mean is kept small and consistent across all 50 endpoints - unlike a
+// jitter range comparable to the mean itself, this keeps request duration
+// (and therefore in-flight concurrency, for a fixed request rate) from
+// swinging widely from one request to the next, which otherwise shows up as
+// CPU usage that drifts over time even under constant load.
+func simulateLatency(meanMillis int) {
+	jitter := meanMillis / 10
+	if jitter < 1 {
+		jitter = 1
+	}
+	time.Sleep(time.Duration(meanMillis-jitter+rand.IntN(2*jitter+1)) * time.Millisecond)
+}
+
+// handleAPI1 simulates a generic endpoint with a small amount of
+// latency jitter.
 func handleAPI1(w http.ResponseWriter, r *http.Request) {
-	time.Sleep(time.Duration(11+rand.IntN(41)) * time.Millisecond)
-	if rand.IntN(100) < 4 {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
+	simulateLatency(32)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok\n"))
 }
 
-// handleAPI2 simulates a generic endpoint with variable latency and an
-// occasional server error.
+// handleAPI2 simulates a generic endpoint with a small amount of
+// latency jitter.
 func handleAPI2(w http.ResponseWriter, r *http.Request) {
-	time.Sleep(time.Duration(32+rand.IntN(82)) * time.Millisecond)
-	if rand.IntN(100) < 6 {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
+	simulateLatency(73)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok\n"))
 }
 
-// handleAPI3 simulates a generic endpoint with variable latency and an
-// occasional server error.
+// handleAPI3 simulates a generic endpoint with a small amount of
+// latency jitter.
 func handleAPI3(w http.ResponseWriter, r *http.Request) {
-	time.Sleep(time.Duration(63+rand.IntN(153)) * time.Millisecond)
-	if rand.IntN(100) < 8 {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
+	simulateLatency(140)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok\n"))
 }
 
-// handleAPI4 simulates a generic endpoint with variable latency and an
-// occasional server error.
+// handleAPI4 simulates a generic endpoint with a small amount of
+// latency jitter.
 func handleAPI4(w http.ResponseWriter, r *http.Request) {
-	time.Sleep(time.Duration(154+rand.IntN(304)) * time.Millisecond)
-	if rand.IntN(100) < 10 {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
+	simulateLatency(306)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok\n"))
 }
 
-// handleAPI5 simulates a generic endpoint with variable latency and an
-// occasional server error.
+// handleAPI5 simulates a generic endpoint with a small amount of
+// latency jitter.
 func handleAPI5(w http.ResponseWriter, r *http.Request) {
-	time.Sleep(time.Duration(7+rand.IntN(25)) * time.Millisecond)
-	if rand.IntN(100) < 4 {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
+	simulateLatency(20)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok\n"))
 }
 
-// handleAPI6 simulates a generic endpoint with variable latency and an
-// occasional server error.
+// handleAPI6 simulates a generic endpoint with a small amount of
+// latency jitter.
 func handleAPI6(w http.ResponseWriter, r *http.Request) {
-	time.Sleep(time.Duration(16+rand.IntN(46)) * time.Millisecond)
-	if rand.IntN(100) < 5 {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
+	simulateLatency(39)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok\n"))
 }
 
-// handleAPI7 simulates a generic endpoint with variable latency and an
-// occasional server error.
+// handleAPI7 simulates a generic endpoint with a small amount of
+// latency jitter.
 func handleAPI7(w http.ResponseWriter, r *http.Request) {
-	time.Sleep(time.Duration(37+rand.IntN(87)) * time.Millisecond)
-	if rand.IntN(100) < 6 {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
+	simulateLatency(80)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok\n"))
 }
 
-// handleAPI8 simulates a generic endpoint with variable latency and an
-// occasional server error.
+// handleAPI8 simulates a generic endpoint with a small amount of
+// latency jitter.
 func handleAPI8(w http.ResponseWriter, r *http.Request) {
-	time.Sleep(time.Duration(68+rand.IntN(158)) * time.Millisecond)
-	if rand.IntN(100) < 7 {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
+	simulateLatency(147)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok\n"))
 }
 
-// handleAPI9 simulates a generic endpoint with variable latency and an
-// occasional server error.
+// handleAPI9 simulates a generic endpoint with a small amount of
+// latency jitter.
 func handleAPI9(w http.ResponseWriter, r *http.Request) {
-	time.Sleep(time.Duration(159+rand.IntN(309)) * time.Millisecond)
-	if rand.IntN(100) < 8 {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
+	simulateLatency(314)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok\n"))
 }
 
-// handleAPI10 simulates a generic endpoint with variable latency and an
-// occasional server error.
+// handleAPI10 simulates a generic endpoint with a small amount of
+// latency jitter.
 func handleAPI10(w http.ResponseWriter, r *http.Request) {
-	time.Sleep(time.Duration(2+rand.IntN(30)) * time.Millisecond)
-	if rand.IntN(100) < 3 {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
+	simulateLatency(17)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok\n"))
 }
 
-// handleAPI11 simulates a generic endpoint with variable latency and an
-// occasional server error.
+// handleAPI11 simulates a generic endpoint with a small amount of
+// latency jitter.
 func handleAPI11(w http.ResponseWriter, r *http.Request) {
-	time.Sleep(time.Duration(21+rand.IntN(51)) * time.Millisecond)
-	if rand.IntN(100) < 6 {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
+	simulateLatency(46)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok\n"))
 }
 
-// handleAPI12 simulates a generic endpoint with variable latency and an
-// occasional server error.
+// handleAPI12 simulates a generic endpoint with a small amount of
+// latency jitter.
 func handleAPI12(w http.ResponseWriter, r *http.Request) {
-	time.Sleep(time.Duration(42+rand.IntN(92)) * time.Millisecond)
-	if rand.IntN(100) < 6 {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
+	simulateLatency(88)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok\n"))
 }
 
-// handleAPI13 simulates a generic endpoint with variable latency and an
-// occasional server error.
+// handleAPI13 simulates a generic endpoint with a small amount of
+// latency jitter.
 func handleAPI13(w http.ResponseWriter, r *http.Request) {
-	time.Sleep(time.Duration(73+rand.IntN(163)) * time.Millisecond)
-	if rand.IntN(100) < 6 {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
+	simulateLatency(154)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok\n"))
 }
 
-// handleAPI14 simulates a generic endpoint with variable latency and an
-// occasional server error.
+// handleAPI14 simulates a generic endpoint with a small amount of
+// latency jitter.
 func handleAPI14(w http.ResponseWriter, r *http.Request) {
-	time.Sleep(time.Duration(164+rand.IntN(314)) * time.Millisecond)
-	if rand.IntN(100) < 6 {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
+	simulateLatency(321)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok\n"))
 }
 
-// handleAPI15 simulates a generic endpoint with variable latency and an
-// occasional server error.
+// handleAPI15 simulates a generic endpoint with a small amount of
+// latency jitter.
 func handleAPI15(w http.ResponseWriter, r *http.Request) {
-	time.Sleep(time.Duration(7+rand.IntN(35)) * time.Millisecond)
-	if rand.IntN(100) < 2 {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
+	simulateLatency(24)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok\n"))
 }
 
-// handleAPI16 simulates a generic endpoint with variable latency and an
-// occasional server error.
+// handleAPI16 simulates a generic endpoint with a small amount of
+// latency jitter.
 func handleAPI16(w http.ResponseWriter, r *http.Request) {
-	time.Sleep(time.Duration(26+rand.IntN(56)) * time.Millisecond)
-	if rand.IntN(100) < 3 {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
+	simulateLatency(54)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok\n"))
 }
 
-// handleAPI17 simulates a generic endpoint with variable latency and an
-// occasional server error.
+// handleAPI17 simulates a generic endpoint with a small amount of
+// latency jitter.
 func handleAPI17(w http.ResponseWriter, r *http.Request) {
-	time.Sleep(time.Duration(47+rand.IntN(97)) * time.Millisecond)
-	if rand.IntN(100) < 6 {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
+	simulateLatency(96)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok\n"))
 }
 
-// handleAPI18 simulates a generic endpoint with variable latency and an
-// occasional server error.
+// handleAPI18 simulates a generic endpoint with a small amount of
+// latency jitter.
 func handleAPI18(w http.ResponseWriter, r *http.Request) {
-	time.Sleep(time.Duration(78+rand.IntN(168)) * time.Millisecond)
-	if rand.IntN(100) < 5 {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
+	simulateLatency(162)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok\n"))
 }
 
-// handleAPI19 simulates a generic endpoint with variable latency and an
-// occasional server error.
+// handleAPI19 simulates a generic endpoint with a small amount of
+// latency jitter.
 func handleAPI19(w http.ResponseWriter, r *http.Request) {
-	time.Sleep(time.Duration(169+rand.IntN(319)) * time.Millisecond)
-	if rand.IntN(100) < 11 {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
+	simulateLatency(328)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok\n"))
 }
 
-// handleAPI20 simulates a generic endpoint with variable latency and an
-// occasional server error.
+// handleAPI20 simulates a generic endpoint with a small amount of
+// latency jitter.
 func handleAPI20(w http.ResponseWriter, r *http.Request) {
-	time.Sleep(time.Duration(2+rand.IntN(20)) * time.Millisecond)
-	if rand.IntN(100) < 4 {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
+	simulateLatency(12)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok\n"))
 }
 
-// handleAPI21 simulates a generic endpoint with variable latency and an
-// occasional server error.
+// handleAPI21 simulates a generic endpoint with a small amount of
+// latency jitter.
 func handleAPI21(w http.ResponseWriter, r *http.Request) {
-	time.Sleep(time.Duration(11+rand.IntN(61)) * time.Millisecond)
-	if rand.IntN(100) < 4 {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
+	simulateLatency(42)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok\n"))
 }
 
-// handleAPI22 simulates a generic endpoint with variable latency and an
-// occasional server error.
+// handleAPI22 simulates a generic endpoint with a small amount of
+// latency jitter.
 func handleAPI22(w http.ResponseWriter, r *http.Request) {
-	time.Sleep(time.Duration(52+rand.IntN(102)) * time.Millisecond)
-	if rand.IntN(100) < 6 {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
+	simulateLatency(103)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok\n"))
 }
 
-// handleAPI23 simulates a generic endpoint with variable latency and an
-// occasional server error.
+// handleAPI23 simulates a generic endpoint with a small amount of
+// latency jitter.
 func handleAPI23(w http.ResponseWriter, r *http.Request) {
-	time.Sleep(time.Duration(83+rand.IntN(173)) * time.Millisecond)
-	if rand.IntN(100) < 10 {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
+	simulateLatency(170)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok\n"))
 }
 
-// handleAPI24 simulates a generic endpoint with variable latency and an
-// occasional server error.
+// handleAPI24 simulates a generic endpoint with a small amount of
+// latency jitter.
 func handleAPI24(w http.ResponseWriter, r *http.Request) {
-	time.Sleep(time.Duration(174+rand.IntN(324)) * time.Millisecond)
-	if rand.IntN(100) < 9 {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
+	simulateLatency(336)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok\n"))
 }
 
-// handleAPI25 simulates a generic endpoint with variable latency and an
-// occasional server error.
+// handleAPI25 simulates a generic endpoint with a small amount of
+// latency jitter.
 func handleAPI25(w http.ResponseWriter, r *http.Request) {
-	time.Sleep(time.Duration(7+rand.IntN(25)) * time.Millisecond)
-	if rand.IntN(100) < 3 {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
+	simulateLatency(20)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok\n"))
 }
 
-// handleAPI26 simulates a generic endpoint with variable latency and an
-// occasional server error.
+// handleAPI26 simulates a generic endpoint with a small amount of
+// latency jitter.
 func handleAPI26(w http.ResponseWriter, r *http.Request) {
-	time.Sleep(time.Duration(16+rand.IntN(66)) * time.Millisecond)
-	if rand.IntN(100) < 5 {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
+	simulateLatency(49)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok\n"))
 }
 
-// handleAPI27 simulates a generic endpoint with variable latency and an
-// occasional server error.
+// handleAPI27 simulates a generic endpoint with a small amount of
+// latency jitter.
 func handleAPI27(w http.ResponseWriter, r *http.Request) {
-	time.Sleep(time.Duration(57+rand.IntN(107)) * time.Millisecond)
-	if rand.IntN(100) < 6 {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
+	simulateLatency(110)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok\n"))
 }
 
-// handleAPI28 simulates a generic endpoint with variable latency and an
-// occasional server error.
+// handleAPI28 simulates a generic endpoint with a small amount of
+// latency jitter.
 func handleAPI28(w http.ResponseWriter, r *http.Request) {
-	time.Sleep(time.Duration(88+rand.IntN(178)) * time.Millisecond)
-	if rand.IntN(100) < 9 {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
+	simulateLatency(177)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok\n"))
 }
 
-// handleAPI29 simulates a generic endpoint with variable latency and an
-// occasional server error.
+// handleAPI29 simulates a generic endpoint with a small amount of
+// latency jitter.
 func handleAPI29(w http.ResponseWriter, r *http.Request) {
-	time.Sleep(time.Duration(179+rand.IntN(329)) * time.Millisecond)
-	if rand.IntN(100) < 7 {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
+	simulateLatency(344)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok\n"))
 }
 
-// handleAPI30 simulates a generic endpoint with variable latency and an
-// occasional server error.
+// handleAPI30 simulates a generic endpoint with a small amount of
+// latency jitter.
 func handleAPI30(w http.ResponseWriter, r *http.Request) {
-	time.Sleep(time.Duration(2+rand.IntN(30)) * time.Millisecond)
-	if rand.IntN(100) < 2 {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
+	simulateLatency(17)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok\n"))
 }
 
-// handleAPI31 simulates a generic endpoint with variable latency and an
-// occasional server error.
+// handleAPI31 simulates a generic endpoint with a small amount of
+// latency jitter.
 func handleAPI31(w http.ResponseWriter, r *http.Request) {
-	time.Sleep(time.Duration(21+rand.IntN(71)) * time.Millisecond)
-	if rand.IntN(100) < 6 {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
+	simulateLatency(56)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok\n"))
 }
 
-// handleAPI32 simulates a generic endpoint with variable latency and an
-// occasional server error.
+// handleAPI32 simulates a generic endpoint with a small amount of
+// latency jitter.
 func handleAPI32(w http.ResponseWriter, r *http.Request) {
-	time.Sleep(time.Duration(32+rand.IntN(112)) * time.Millisecond)
-	if rand.IntN(100) < 6 {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
+	simulateLatency(88)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok\n"))
 }
 
-// handleAPI33 simulates a generic endpoint with variable latency and an
-// occasional server error.
+// handleAPI33 simulates a generic endpoint with a small amount of
+// latency jitter.
 func handleAPI33(w http.ResponseWriter, r *http.Request) {
-	time.Sleep(time.Duration(93+rand.IntN(183)) * time.Millisecond)
-	if rand.IntN(100) < 8 {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
+	simulateLatency(184)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok\n"))
 }
 
-// handleAPI34 simulates a generic endpoint with variable latency and an
-// occasional server error.
+// handleAPI34 simulates a generic endpoint with a small amount of
+// latency jitter.
 func handleAPI34(w http.ResponseWriter, r *http.Request) {
-	time.Sleep(time.Duration(184+rand.IntN(334)) * time.Millisecond)
-	if rand.IntN(100) < 12 {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
+	simulateLatency(351)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok\n"))
 }
 
-// handleAPI35 simulates a generic endpoint with variable latency and an
-// occasional server error.
+// handleAPI35 simulates a generic endpoint with a small amount of
+// latency jitter.
 func handleAPI35(w http.ResponseWriter, r *http.Request) {
-	time.Sleep(time.Duration(7+rand.IntN(35)) * time.Millisecond)
-	if rand.IntN(100) < 4 {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
+	simulateLatency(24)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok\n"))
 }
 
-// handleAPI36 simulates a generic endpoint with variable latency and an
-// occasional server error.
+// handleAPI36 simulates a generic endpoint with a small amount of
+// latency jitter.
 func handleAPI36(w http.ResponseWriter, r *http.Request) {
-	time.Sleep(time.Duration(26+rand.IntN(76)) * time.Millisecond)
-	if rand.IntN(100) < 3 {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
+	simulateLatency(64)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok\n"))
 }
 
-// handleAPI37 simulates a generic endpoint with variable latency and an
-// occasional server error.
+// handleAPI37 simulates a generic endpoint with a small amount of
+// latency jitter.
 func handleAPI37(w http.ResponseWriter, r *http.Request) {
-	time.Sleep(time.Duration(37+rand.IntN(117)) * time.Millisecond)
-	if rand.IntN(100) < 6 {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
+	simulateLatency(96)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok\n"))
 }
 
-// handleAPI38 simulates a generic endpoint with variable latency and an
-// occasional server error.
+// handleAPI38 simulates a generic endpoint with a small amount of
+// latency jitter.
 func handleAPI38(w http.ResponseWriter, r *http.Request) {
-	time.Sleep(time.Duration(98+rand.IntN(188)) * time.Millisecond)
-	if rand.IntN(100) < 7 {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
+	simulateLatency(192)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok\n"))
 }
 
-// handleAPI39 simulates a generic endpoint with variable latency and an
-// occasional server error.
+// handleAPI39 simulates a generic endpoint with a small amount of
+// latency jitter.
 func handleAPI39(w http.ResponseWriter, r *http.Request) {
-	time.Sleep(time.Duration(189+rand.IntN(339)) * time.Millisecond)
-	if rand.IntN(100) < 10 {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
+	simulateLatency(358)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok\n"))
 }
 
-// handleAPI40 simulates a generic endpoint with variable latency and an
-// occasional server error.
+// handleAPI40 simulates a generic endpoint with a small amount of
+// latency jitter.
 func handleAPI40(w http.ResponseWriter, r *http.Request) {
-	time.Sleep(time.Duration(2+rand.IntN(20)) * time.Millisecond)
-	if rand.IntN(100) < 3 {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
+	simulateLatency(12)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok\n"))
 }
 
-// handleAPI41 simulates a generic endpoint with variable latency and an
-// occasional server error.
+// handleAPI41 simulates a generic endpoint with a small amount of
+// latency jitter.
 func handleAPI41(w http.ResponseWriter, r *http.Request) {
-	time.Sleep(time.Duration(11+rand.IntN(41)) * time.Millisecond)
-	if rand.IntN(100) < 4 {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
+	simulateLatency(32)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok\n"))
 }
 
-// handleAPI42 simulates a generic endpoint with variable latency and an
-// occasional server error.
+// handleAPI42 simulates a generic endpoint with a small amount of
+// latency jitter.
 func handleAPI42(w http.ResponseWriter, r *http.Request) {
-	time.Sleep(time.Duration(42+rand.IntN(122)) * time.Millisecond)
-	if rand.IntN(100) < 6 {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
+	simulateLatency(103)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok\n"))
 }
 
-// handleAPI43 simulates a generic endpoint with variable latency and an
-// occasional server error.
+// handleAPI43 simulates a generic endpoint with a small amount of
+// latency jitter.
 func handleAPI43(w http.ResponseWriter, r *http.Request) {
-	time.Sleep(time.Duration(63+rand.IntN(193)) * time.Millisecond)
-	if rand.IntN(100) < 6 {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
+	simulateLatency(160)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok\n"))
 }
 
-// handleAPI44 simulates a generic endpoint with variable latency and an
-// occasional server error.
+// handleAPI44 simulates a generic endpoint with a small amount of
+// latency jitter.
 func handleAPI44(w http.ResponseWriter, r *http.Request) {
-	time.Sleep(time.Duration(194+rand.IntN(344)) * time.Millisecond)
-	if rand.IntN(100) < 8 {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
+	simulateLatency(366)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok\n"))
 }
 
-// handleAPI45 simulates a generic endpoint with variable latency and an
-// occasional server error.
+// handleAPI45 simulates a generic endpoint with a small amount of
+// latency jitter.
 func handleAPI45(w http.ResponseWriter, r *http.Request) {
-	time.Sleep(time.Duration(7+rand.IntN(25)) * time.Millisecond)
-	if rand.IntN(100) < 2 {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
+	simulateLatency(20)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok\n"))
 }
 
-// handleAPI46 simulates a generic endpoint with variable latency and an
-// occasional server error.
+// handleAPI46 simulates a generic endpoint with a small amount of
+// latency jitter.
 func handleAPI46(w http.ResponseWriter, r *http.Request) {
-	time.Sleep(time.Duration(16+rand.IntN(46)) * time.Millisecond)
-	if rand.IntN(100) < 5 {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
+	simulateLatency(39)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok\n"))
 }
 
-// handleAPI47 simulates a generic endpoint with variable latency and an
-// occasional server error.
+// handleAPI47 simulates a generic endpoint with a small amount of
+// latency jitter.
 func handleAPI47(w http.ResponseWriter, r *http.Request) {
-	time.Sleep(time.Duration(47+rand.IntN(127)) * time.Millisecond)
-	if rand.IntN(100) < 6 {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
+	simulateLatency(110)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok\n"))
 }
 
-// handleAPI48 simulates a generic endpoint with variable latency and an
-// occasional server error.
+// handleAPI48 simulates a generic endpoint with a small amount of
+// latency jitter.
 func handleAPI48(w http.ResponseWriter, r *http.Request) {
-	time.Sleep(time.Duration(68+rand.IntN(198)) * time.Millisecond)
-	if rand.IntN(100) < 5 {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
+	simulateLatency(167)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok\n"))
 }
 
-// handleAPI49 simulates a generic endpoint with variable latency and an
-// occasional server error.
+// handleAPI49 simulates a generic endpoint with a small amount of
+// latency jitter.
 func handleAPI49(w http.ResponseWriter, r *http.Request) {
-	time.Sleep(time.Duration(199+rand.IntN(349)) * time.Millisecond)
-	if rand.IntN(100) < 6 {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
+	simulateLatency(374)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok\n"))
 }
 
-// handleAPI50 simulates a generic endpoint with variable latency and an
-// occasional server error.
+// handleAPI50 simulates a generic endpoint with a small amount of
+// latency jitter.
 func handleAPI50(w http.ResponseWriter, r *http.Request) {
-	time.Sleep(time.Duration(2+rand.IntN(30)) * time.Millisecond)
-	if rand.IntN(100) < 4 {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
+	simulateLatency(17)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok\n"))
 }

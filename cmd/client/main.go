@@ -1,13 +1,21 @@
 // Command client is a load generator for cmd/prometheus-app and
 // cmd/otel-app: it fires the same 50 API requests they expose (see the
-// endpoints slice below, chosen at random) at a fixed rate per target
-// (CLIENT_TARGET_RATE_HZ), so every target receives the same, precisely
-// controlled request rate - not a "best effort" rate that depends on how
-// slow that target's handlers happen to run - which keeps the load
-// comparable when measuring resource usage across targets. It never
-// inspects the response - triggering the request is the only job here,
-// so failures (including a target being down) are counted but otherwise
-// ignored.
+// endpoints slice below) in lockstep rounds, roughly CLIENT_TARGET_RATE_HZ
+// rounds per second. On every round, one endpoint is chosen at random and
+// sent to every target at once, rather than each target independently
+// rolling its own random endpoint - so at any given instant, all targets are
+// serving the identical request shape. The round doesn't advance until every
+// target has responded (or failed/timed out), so a slow target holds up the
+// next round for every other target too - deliberately, since the goal is
+// for all targets to be doing the same thing at the same time, not for each
+// target to run at its own independent best-effort rate. Without the
+// lockstep, two targets could by chance be hit with endpoints of very
+// different simulated latency at the same moment, or drift out of sync with
+// each other over time, making their resource usage diverge for reasons that
+// have nothing to do with the thing being compared (the instrumentation
+// SDK). It never inspects the response - triggering the request is the only
+// job here, so failures (including a target being down) are counted but
+// otherwise ignored.
 package main
 
 import (
@@ -210,22 +218,19 @@ func (c *targetCounters) recordFailed() {
 	c.failedMetric.Inc()
 }
 
-// targetWorker fires requests at target on a fixed-rate ticker (one tick
-// every "interval") for as long as ctx is alive. Each tick's request runs
-// in its own goroutine rather than blocking the ticker loop, so a slow or
-// hung target delays only its own in-flight requests - never the rate at
-// which new ones are fired, at this target or any other. A random
-// startup delay (up to one interval) staggers the tickers across targets
-// so the aggregate load doesn't arrive in synchronized bursts. It ignores
-// the response body and any error beyond counting it - it exists purely
-// to make the target apps' metrics move.
-func targetWorker(ctx context.Context, client *http.Client, target string, interval time.Duration, c *targetCounters) {
-	select {
-	case <-ctx.Done():
-		return
-	case <-time.After(time.Duration(rand.Int64N(int64(interval)))):
-	}
-
+// tickLoop runs rounds for as long as ctx is alive: each round picks one
+// endpoint at random and sends it to every target at once, each in its own
+// goroutine so a slow target doesn't delay another target's request within
+// the round - but the round as a whole waits for every target to finish
+// before the next one starts, via the WaitGroup. That's what keeps targets
+// in lockstep: without it, a target that responded quickly could race ahead
+// into later rounds (and later endpoint choices) while a slower target was
+// still finishing an earlier one. ticker paces the target rate for rounds
+// that finish faster than interval; a round that takes longer than interval
+// simply runs back-to-back with the next, at whatever rate the slowest
+// target allows. It ignores the response body and any error beyond counting
+// it - it exists purely to make the target apps' metrics move.
+func tickLoop(ctx context.Context, client *http.Client, targets []string, counters []*targetCounters, interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
@@ -234,20 +239,26 @@ func targetWorker(ctx context.Context, client *http.Client, target string, inter
 			return
 		case <-ticker.C:
 			ep := endpoints[rand.IntN(len(endpoints))]
-			go func() {
-				req, err := http.NewRequestWithContext(ctx, ep.method, target+ep.path, nil)
-				if err != nil {
-					return
-				}
-				resp, err := client.Do(req)
-				c.recordSent()
-				if err != nil {
-					c.recordFailed()
-					return
-				}
-				_, _ = io.Copy(io.Discard, resp.Body)
-				_ = resp.Body.Close()
-			}()
+			var wg sync.WaitGroup
+			for i, target := range targets {
+				wg.Add(1)
+				go func(target string, c *targetCounters) {
+					defer wg.Done()
+					req, err := http.NewRequestWithContext(ctx, ep.method, target+ep.path, nil)
+					if err != nil {
+						return
+					}
+					resp, err := client.Do(req)
+					c.recordSent()
+					if err != nil {
+						c.recordFailed()
+						return
+					}
+					_, _ = io.Copy(io.Discard, resp.Body)
+					_ = resp.Body.Close()
+				}(target, counters[i])
+			}
+			wg.Wait()
 		}
 	}
 }
@@ -290,7 +301,7 @@ func main() {
 		}
 	}()
 
-	log.Printf("client generating load against %d targets at %.3g req/s each (%s between requests per target, ~%.3g req/s total)",
+	log.Printf("client generating load against %d targets at %.3g req/s each (%s between ticks, same endpoint sent to every target per tick, ~%.3g req/s total)",
 		len(targets), rateHz, interval, rateHz*float64(len(targets)))
 
 	hosts := make([]string, len(targets))
@@ -300,20 +311,17 @@ func main() {
 	sentByTarget := make([]atomic.Int64, len(targets))
 	failedByTarget := make([]atomic.Int64, len(targets))
 
-	var wg sync.WaitGroup
-	for i, target := range targets {
-		counters := &targetCounters{
+	counters := make([]*targetCounters, len(targets))
+	for i := range targets {
+		counters[i] = &targetCounters{
 			sentAtomic:   &sentByTarget[i],
 			failedAtomic: &failedByTarget[i],
 			sentMetric:   metrics.sentTotal.WithLabelValues(hosts[i]),
 			failedMetric: metrics.failedTotal.WithLabelValues(hosts[i]),
 		}
-		wg.Add(1)
-		go func(target string, counters *targetCounters) {
-			defer wg.Done()
-			targetWorker(ctx, httpClient, target, interval, counters)
-		}(target, counters)
 	}
+
+	go tickLoop(ctx, httpClient, targets, counters, interval)
 
 	statusTicker := time.NewTicker(10 * time.Second)
 	defer statusTicker.Stop()
@@ -328,7 +336,6 @@ loop:
 	}
 
 	log.Println("shutting down")
-	wg.Wait()
 	log.Println("final:")
 	logStatus(hosts, sentByTarget, failedByTarget)
 }
