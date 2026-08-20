@@ -1,21 +1,31 @@
 // Command client is a load generator for cmd/prometheus-app and
 // cmd/otel-app: it fires the same 50 API requests they expose (see the
 // endpoints slice below) in lockstep rounds, roughly CLIENT_TARGET_RATE_HZ
-// rounds per second. On every round, one endpoint is chosen at random and
-// sent to every target at once, rather than each target independently
-// rolling its own random endpoint - so at any given instant, all targets are
-// serving the identical request shape. The round doesn't advance until every
-// target has responded (or failed/timed out), so a slow target holds up the
-// next round for every other target too - deliberately, since the goal is
-// for all targets to be doing the same thing at the same time, not for each
-// target to run at its own independent best-effort rate. Without the
-// lockstep, two targets could by chance be hit with endpoints of very
-// different simulated latency at the same moment, or drift out of sync with
-// each other over time, making their resource usage diverge for reasons that
-// have nothing to do with the thing being compared (the instrumentation
-// SDK). It never inspects the response - triggering the request is the only
-// job here, so failures (including a target being down) are counted but
-// otherwise ignored.
+// rounds per second per worker, run across CLIENT_WORKERS independent
+// workers (see tickLoop and main below) - so the aggregate rate against each
+// target is CLIENT_WORKERS * CLIENT_TARGET_RATE_HZ. Splitting the load
+// across several independently-ticking workers, rather than one worker
+// ticking at the full combined rate, keeps each individual ticker's period
+// long enough for Go's timer to hit it reliably.
+//
+// Within a single round (one worker's single tick), one endpoint is chosen
+// at random and sent to every target at once, rather than each target
+// independently rolling its own random endpoint - so at any given instant,
+// all targets are serving the identical request shape. The round doesn't
+// advance until every target has responded (or failed/timed out), so a slow
+// target holds up that worker's next round for every other target too -
+// deliberately, since the goal is for all targets to be doing the same
+// thing at the same time, not for each target to run at its own independent
+// best-effort rate. Without the lockstep, two targets could by chance be hit
+// with endpoints of very different simulated latency at the same moment, or
+// drift out of sync with each other over time, making their resource usage
+// diverge for reasons that have nothing to do with the thing being compared
+// (the instrumentation SDK). Workers are otherwise independent of each
+// other - each rolls its own endpoint choice on its own schedule - so two
+// different workers can legitimately have two different endpoints in flight
+// against all targets at once. It never inspects the response - triggering
+// the request is the only job here, so failures (including a target being
+// down) are counted but otherwise ignored.
 package main
 
 import (
@@ -172,12 +182,18 @@ func hostOf(target string) string {
 }
 
 // logStatus logs sent/failed request counts summed per host (as
-// determined by hostOf), followed by the grand total across all hosts.
-func logStatus(hosts []string, sentByTarget, failedByTarget []atomic.Int64) {
+// determined by hostOf), followed by the grand total across all hosts, and
+// returns that grand total so the caller can track the actually-achieved
+// request rate over time (see main). Under strict per-round lockstep (see
+// tickLoop), that rate can be far below the configured
+// CLIENT_TARGET_RATE_HZ * CLIENT_WORKERS ceiling whenever target latency
+// exceeds the tick interval, since a slow target holds up every worker's
+// next round - so it's worth surfacing what's actually happening rather
+// than trusting the configured numbers.
+func logStatus(hosts []string, sentByTarget, failedByTarget []atomic.Int64) (totalSent, totalFailed int64) {
 	type counts struct{ sent, failed int64 }
 	byHost := map[string]*counts{}
 	var order []string
-	var totalSent, totalFailed int64
 
 	for i, h := range hosts {
 		s, f := sentByTarget[i].Load(), failedByTarget[i].Load()
@@ -198,6 +214,7 @@ func logStatus(hosts []string, sentByTarget, failedByTarget []atomic.Int64) {
 		log.Printf("  %s: sent=%d failed=%d", h, c.sent, c.failed)
 	}
 	log.Printf("sent=%d failed=%d", totalSent, totalFailed)
+	return totalSent, totalFailed
 }
 
 // targetCounters bundles the two places a completed request against one
@@ -268,13 +285,17 @@ func main() {
 	for i := range targets {
 		targets[i] = strings.TrimRight(strings.TrimSpace(targets[i]), "/")
 	}
-	rateHz := getenvFloat("CLIENT_TARGET_RATE_HZ", 10)
+	rateHz := getenvFloat("CLIENT_TARGET_RATE_HZ", 250)
 	if rateHz <= 0 {
 		log.Fatalf("invalid CLIENT_TARGET_RATE_HZ=%v: must be > 0", rateHz)
 	}
 	interval := time.Duration(float64(time.Second) / rateHz)
 	if interval <= 0 {
 		interval = 1
+	}
+	workers := getenvInt("CLIENT_WORKERS", 4)
+	if workers <= 0 {
+		log.Fatalf("invalid CLIENT_WORKERS=%d: must be > 0", workers)
 	}
 	timeout := time.Duration(getenvInt("CLIENT_TIMEOUT_MS", 2000)) * time.Millisecond
 	metricsAddr := getenv("CLIENT_METRICS_ADDR", ":9200")
@@ -301,8 +322,8 @@ func main() {
 		}
 	}()
 
-	log.Printf("client generating load against %d targets at %.3g req/s each (%s between ticks, same endpoint sent to every target per tick, ~%.3g req/s total)",
-		len(targets), rateHz, interval, rateHz*float64(len(targets)))
+	log.Printf("client generating load against %d targets with %d workers at %.3g req/s each (%s between ticks per worker) - up to ~%.3g req/s per target, ~%.3g req/s total as a ceiling; actual achieved rate is logged every 10s below, since strict per-round lockstep (see tickLoop) can cap it lower whenever target latency exceeds the tick interval",
+		len(targets), workers, rateHz, interval, rateHz*float64(workers), rateHz*float64(workers)*float64(len(targets)))
 
 	hosts := make([]string, len(targets))
 	for i, target := range targets {
@@ -321,17 +342,25 @@ func main() {
 		}
 	}
 
-	go tickLoop(ctx, httpClient, targets, counters, interval)
+	for w := 0; w < workers; w++ {
+		go tickLoop(ctx, httpClient, targets, counters, interval)
+	}
 
 	statusTicker := time.NewTicker(10 * time.Second)
 	defer statusTicker.Stop()
+	prevSent, prevTime := int64(0), time.Now()
 loop:
 	for {
 		select {
 		case <-ctx.Done():
 			break loop
 		case <-statusTicker.C:
-			logStatus(hosts, sentByTarget, failedByTarget)
+			totalSent, _ := logStatus(hosts, sentByTarget, failedByTarget)
+			now := time.Now()
+			actualRate := float64(totalSent-prevSent) / now.Sub(prevTime).Seconds()
+			log.Printf("actual rate: %.4g req/s total over the last %s (vs ~%.3g req/s ceiling)",
+				actualRate, now.Sub(prevTime).Round(time.Second), rateHz*float64(workers)*float64(len(targets)))
+			prevSent, prevTime = totalSent, now
 		}
 	}
 
