@@ -46,10 +46,20 @@ PROFILE_PORT    ?= 8001
 PROFILE_SECONDS ?= 30
 PROFILE_DIR     ?= $(BIN_DIR)/profiles
 
+# The two storage-backend hosts from the OTLP-vs-remote-write ingestion
+# comparison (each running Prometheus as a full backend - see
+# deployment/docker/backend's run-prometheus-server - one fed by otel-agent
+# via OTLP, the other by prometheus-agent/vmagent via remote-write), used
+# by collect-backend-profiles below. Prometheus exposes net/http/pprof on
+# its own web port (9090) unconditionally, no extra flag needed.
+PROMETHEUS_STORAGE_HOST ?= 35.194.243.41
+OTEL_STORAGE_HOST       ?= 104.199.176.233
+BACKEND_PROFILE_PORT    ?= 9090
+
 .PHONY: all otel-app prometheus-app uninstrumented-app client clean tar \
 	run-otel-app run-prometheus-app run-uninstrumented-app run-client \
 	stop-otel-app stop-prometheus-app stop-uninstrumented-app stop-client stop \
-	collect-profiles
+	collect-profiles collect-backend-profiles
 
 all: otel-app prometheus-app uninstrumented-app client
 
@@ -145,6 +155,24 @@ collect-profiles:
 		  && curl -sf "http://$$host:$(PROFILE_PORT)/debug/pprof/profile?seconds=$(PROFILE_SECONDS)" -o "$(PROFILE_DIR)/$$name-$$ts-cpu.pprof" \
 		  && echo "done: $$name ($$host:$(PROFILE_PORT))" \
 		  || echo "FAILED: $$name ($$host:$(PROFILE_PORT))" ) & \
+	done; \
+	wait; \
+	echo "profiles written to $(PROFILE_DIR)"
+
+# Same idea as collect-profiles above, but for the two storage-backend
+# hosts instead of the app hosts: pulls heap then CPU pprof (heap first,
+# since /debug/pprof/profile blocks for $(PROFILE_SECONDS)s) from both in
+# parallel, so their resource usage under OTLP vs. remote-write ingestion
+# can be compared for the same window of wall-clock time.
+collect-backend-profiles:
+	@mkdir -p $(PROFILE_DIR)
+	@ts=$$(date +%Y%m%d-%H%M%S); \
+	for pair in "prometheus-storage:$(PROMETHEUS_STORAGE_HOST)" "otel-storage:$(OTEL_STORAGE_HOST)"; do \
+		name=$${pair%%:*}; host=$${pair#*:}; \
+		( curl -sf "http://$$host:$(BACKEND_PROFILE_PORT)/debug/pprof/heap" -o "$(PROFILE_DIR)/$$name-$$ts-heap.pprof" \
+		  && curl -sf "http://$$host:$(BACKEND_PROFILE_PORT)/debug/pprof/profile?seconds=$(PROFILE_SECONDS)" -o "$(PROFILE_DIR)/$$name-$$ts-cpu.pprof" \
+		  && echo "done: $$name ($$host:$(BACKEND_PROFILE_PORT))" \
+		  || echo "FAILED: $$name ($$host:$(BACKEND_PROFILE_PORT))" ) & \
 	done; \
 	wait; \
 	echo "profiles written to $(PROFILE_DIR)"
