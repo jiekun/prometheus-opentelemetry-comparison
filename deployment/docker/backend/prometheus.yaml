@@ -43,6 +43,12 @@ scrape_configs:
       - targets: [10.140.15.204:9100]
         labels:
           host_name: vmagent
+      - targets: [10.140.15.205:9100]
+        labels:
+          host_name: otel-storage
+      - targets: [10.140.15.206:9100]
+        labels:
+          host_name: prometheus-storage
   - job_name: component-self-metrics
     static_configs:
       - targets: [10.140.15.202:9200]
