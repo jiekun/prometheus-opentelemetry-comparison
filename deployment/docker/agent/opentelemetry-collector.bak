@@ -1,0 +1,277 @@
+# Variant used for the prometheus-app-only scrape comparison: instead of
+# receiving OTLP pushed from otel-app (see opentelemetry-collector.yaml.bak
+# for that version), this collector scrapes cmd/prometheus-app instances
+# directly via the prometheusreceiver - the same way prometheus-agent.yaml
+# and vmagent.yaml do - so otelcol's own scrape+forward overhead can be
+# compared against theirs on identical targets.
+#
+# Configurable by hand: this ships with 2 placeholder hosts x 100 ports
+# each, kept identical (by hand) to prometheus-agent.yaml/vmagent.yaml's
+# scrape_configs. Replace the placeholder hostnames below with your real
+# hosts/IPs, add or remove target blocks to match how many hosts you
+# actually have, then restart the container - no rebuild needed since this
+# file is bind-mounted. If you edit this, mirror the change into
+# prometheus-agent.yaml and vmagent.yaml too.
+receivers:
+  prometheus:
+    config:
+      global:
+        scrape_interval: 15s
+        scrape_timeout: 10s
+      scrape_configs:
+        - job_name: prometheus-apps
+          static_configs:
+            - targets:
+                - 10.140.15.194:8001
+                - 10.140.15.194:8002
+                - 10.140.15.194:8003
+                - 10.140.15.194:8004
+                - 10.140.15.194:8005
+                - 10.140.15.194:8006
+                - 10.140.15.194:8007
+                - 10.140.15.194:8008
+                - 10.140.15.194:8009
+                - 10.140.15.194:8010
+                - 10.140.15.194:8011
+                - 10.140.15.194:8012
+                - 10.140.15.194:8013
+                - 10.140.15.194:8014
+                - 10.140.15.194:8015
+                - 10.140.15.194:8016
+                - 10.140.15.194:8017
+                - 10.140.15.194:8018
+                - 10.140.15.194:8019
+                - 10.140.15.194:8020
+                - 10.140.15.194:8021
+                - 10.140.15.194:8022
+                - 10.140.15.194:8023
+                - 10.140.15.194:8024
+                - 10.140.15.194:8025
+                - 10.140.15.194:8026
+                - 10.140.15.194:8027
+                - 10.140.15.194:8028
+                - 10.140.15.194:8029
+                - 10.140.15.194:8030
+                - 10.140.15.194:8031
+                - 10.140.15.194:8032
+                - 10.140.15.194:8033
+                - 10.140.15.194:8034
+                - 10.140.15.194:8035
+                - 10.140.15.194:8036
+                - 10.140.15.194:8037
+                - 10.140.15.194:8038
+                - 10.140.15.194:8039
+                - 10.140.15.194:8040
+                - 10.140.15.194:8041
+                - 10.140.15.194:8042
+                - 10.140.15.194:8043
+                - 10.140.15.194:8044
+                - 10.140.15.194:8045
+                - 10.140.15.194:8046
+                - 10.140.15.194:8047
+                - 10.140.15.194:8048
+                - 10.140.15.194:8049
+                - 10.140.15.194:8050
+                - 10.140.15.194:8051
+                - 10.140.15.194:8052
+                - 10.140.15.194:8053
+                - 10.140.15.194:8054
+                - 10.140.15.194:8055
+                - 10.140.15.194:8056
+                - 10.140.15.194:8057
+                - 10.140.15.194:8058
+                - 10.140.15.194:8059
+                - 10.140.15.194:8060
+                - 10.140.15.194:8061
+                - 10.140.15.194:8062
+                - 10.140.15.194:8063
+                - 10.140.15.194:8064
+                - 10.140.15.194:8065
+                - 10.140.15.194:8066
+                - 10.140.15.194:8067
+                - 10.140.15.194:8068
+                - 10.140.15.194:8069
+                - 10.140.15.194:8070
+                - 10.140.15.194:8071
+                - 10.140.15.194:8072
+                - 10.140.15.194:8073
+                - 10.140.15.194:8074
+                - 10.140.15.194:8075
+                - 10.140.15.194:8076
+                - 10.140.15.194:8077
+                - 10.140.15.194:8078
+                - 10.140.15.194:8079
+                - 10.140.15.194:8080
+                - 10.140.15.194:8081
+                - 10.140.15.194:8082
+                - 10.140.15.194:8083
+                - 10.140.15.194:8084
+                - 10.140.15.194:8085
+                - 10.140.15.194:8086
+                - 10.140.15.194:8087
+                - 10.140.15.194:8088
+                - 10.140.15.194:8089
+                - 10.140.15.194:8090
+                - 10.140.15.194:8091
+                - 10.140.15.194:8092
+                - 10.140.15.194:8093
+                - 10.140.15.194:8094
+                - 10.140.15.194:8095
+                - 10.140.15.194:8096
+                - 10.140.15.194:8097
+                - 10.140.15.194:8098
+                - 10.140.15.194:8099
+                - 10.140.15.194:8100
+            - targets:
+                - 10.140.15.195:8001
+                - 10.140.15.195:8002
+                - 10.140.15.195:8003
+                - 10.140.15.195:8004
+                - 10.140.15.195:8005
+                - 10.140.15.195:8006
+                - 10.140.15.195:8007
+                - 10.140.15.195:8008
+                - 10.140.15.195:8009
+                - 10.140.15.195:8010
+                - 10.140.15.195:8011
+                - 10.140.15.195:8012
+                - 10.140.15.195:8013
+                - 10.140.15.195:8014
+                - 10.140.15.195:8015
+                - 10.140.15.195:8016
+                - 10.140.15.195:8017
+                - 10.140.15.195:8018
+                - 10.140.15.195:8019
+                - 10.140.15.195:8020
+                - 10.140.15.195:8021
+                - 10.140.15.195:8022
+                - 10.140.15.195:8023
+                - 10.140.15.195:8024
+                - 10.140.15.195:8025
+                - 10.140.15.195:8026
+                - 10.140.15.195:8027
+                - 10.140.15.195:8028
+                - 10.140.15.195:8029
+                - 10.140.15.195:8030
+                - 10.140.15.195:8031
+                - 10.140.15.195:8032
+                - 10.140.15.195:8033
+                - 10.140.15.195:8034
+                - 10.140.15.195:8035
+                - 10.140.15.195:8036
+                - 10.140.15.195:8037
+                - 10.140.15.195:8038
+                - 10.140.15.195:8039
+                - 10.140.15.195:8040
+                - 10.140.15.195:8041
+                - 10.140.15.195:8042
+                - 10.140.15.195:8043
+                - 10.140.15.195:8044
+                - 10.140.15.195:8045
+                - 10.140.15.195:8046
+                - 10.140.15.195:8047
+                - 10.140.15.195:8048
+                - 10.140.15.195:8049
+                - 10.140.15.195:8050
+                - 10.140.15.195:8051
+                - 10.140.15.195:8052
+                - 10.140.15.195:8053
+                - 10.140.15.195:8054
+                - 10.140.15.195:8055
+                - 10.140.15.195:8056
+                - 10.140.15.195:8057
+                - 10.140.15.195:8058
+                - 10.140.15.195:8059
+                - 10.140.15.195:8060
+                - 10.140.15.195:8061
+                - 10.140.15.195:8062
+                - 10.140.15.195:8063
+                - 10.140.15.195:8064
+                - 10.140.15.195:8065
+                - 10.140.15.195:8066
+                - 10.140.15.195:8067
+                - 10.140.15.195:8068
+                - 10.140.15.195:8069
+                - 10.140.15.195:8070
+                - 10.140.15.195:8071
+                - 10.140.15.195:8072
+                - 10.140.15.195:8073
+                - 10.140.15.195:8074
+                - 10.140.15.195:8075
+                - 10.140.15.195:8076
+                - 10.140.15.195:8077
+                - 10.140.15.195:8078
+                - 10.140.15.195:8079
+                - 10.140.15.195:8080
+                - 10.140.15.195:8081
+                - 10.140.15.195:8082
+                - 10.140.15.195:8083
+                - 10.140.15.195:8084
+                - 10.140.15.195:8085
+                - 10.140.15.195:8086
+                - 10.140.15.195:8087
+                - 10.140.15.195:8088
+                - 10.140.15.195:8089
+                - 10.140.15.195:8090
+                - 10.140.15.195:8091
+                - 10.140.15.195:8092
+                - 10.140.15.195:8093
+                - 10.140.15.195:8094
+                - 10.140.15.195:8095
+                - 10.140.15.195:8096
+                - 10.140.15.195:8097
+                - 10.140.15.195:8098
+                - 10.140.15.195:8099
+                - 10.140.15.195:8100
+
+processors:
+  batch:
+    send_batch_size: 10000
+    timeout: 1s
+
+extensions:
+  file_storage:
+    directory: /home/jiekun/prometheus-opentelemetry-comparison/bin/otel-agent-storage
+
+exporters:
+  # cmd/metrics-noop-receiver (deployment/docker/backend), running on the
+  # same instance as the real Prometheus server (10.140.15.201) but on its
+  # own ports. Its OTLP endpoint is gRPC-only for our purposes: the gRPC
+  # side (:8001) is a standard, fully-compliant OTLP MetricsService, while
+  # its HTTP side (:8000/otlp/export) never decompresses the request body
+  # before unmarshaling - it would just count every batch as a decode
+  # error if this exporter used HTTP with compression enabled.
+  otlp/noop-receiver:
+    sending_queue:
+      storage: file_storage
+    endpoint: "10.140.15.201:8001"
+    compression: gzip
+    timeout: 10s
+    tls:
+      insecure: true
+
+service:
+  extensions: [file_storage]
+  pipelines:
+    metrics:
+      receivers: [ prometheus ]
+      processors: [ batch ]
+      exporters: [ otlp/noop-receiver ]
+
+  # Self-observability: exposes the collector's own internal metrics as a
+  # Prometheus-scrapeable endpoint (see prometheus-server's prometheus.yaml
+  # for the matching scrape job). In particular this includes
+  # otelcol_receiver_accepted_metric_points - the sample count this agent
+  # has actually scraped from prometheus-app - alongside its own resource
+  # usage (otelcol_process_*). without_type_suffix defaults to true for this
+  # exporter, so the accepted-points counter is exposed without a
+  # trailing _total.
+  telemetry:
+    metrics:
+      level: basic
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: "0.0.0.0"
+                port: 8888
