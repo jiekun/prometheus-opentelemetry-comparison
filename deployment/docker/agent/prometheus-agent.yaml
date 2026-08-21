@@ -21,14 +21,14 @@ remote_write:
   # path must be /api/v2/write to match protobuf_message below - /api/v1/write
   # would have it try to unmarshal a v2 payload as a v1 WriteRequest and
   # fail to decode every time.
-  - url: http://10.140.15.206:9090/api/v1/write
-    protobuf_message: io.prometheus.write.v2.Request
+  - url: http://10.140.15.206:8428/api/v1/write
+    # protobuf_message: io.prometheus.write.v2.Request
     queue_config:
         capacity: 25000
         max_samples_per_send: 12000
         batch_send_deadline: 1s
     metadata_config:
-        send: false
+        send: true
 
 scrape_configs:
   - job_name: prometheus-apps
