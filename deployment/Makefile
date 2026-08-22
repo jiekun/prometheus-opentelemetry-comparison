@@ -14,8 +14,8 @@ OTEL_COLLECTOR_ENDPOINT ?= http://10.140.15.200:4318
 
 # otel-app's metric export cadence, in milliseconds (OTEL_METRIC_EXPORT_INTERVAL,
 # read natively by the OTel SDK's periodic reader - see cmd/otel-app/main.go).
-# Matches prometheus-agent.yaml's scrape_interval (15s) for a fair comparison.
-OTEL_METRIC_EXPORT_INTERVAL ?= 15000
+# Matches prometheus-agent.yaml's scrape_interval (30s) for a fair comparison.
+OTEL_METRIC_EXPORT_INTERVAL ?= 30000
 
 OTEL_EXPORTER_OTLP_METRICS_COMPRESSION ?= gzip
 

@@ -10,7 +10,7 @@
 # how many hosts you actually have, then restart the container - no
 # rebuild needed since this file is bind-mounted.
 global:
-  scrape_interval: 15s
+  scrape_interval: 30s
   scrape_timeout: 10s
 
 remote_write:
