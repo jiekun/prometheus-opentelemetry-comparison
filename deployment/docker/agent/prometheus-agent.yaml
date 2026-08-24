@@ -10,7 +10,7 @@
 # how many hosts you actually have, then restart the container - no
 # rebuild needed since this file is bind-mounted.
 global:
-  scrape_interval: 30s
+  scrape_interval: 10s
   scrape_timeout: 10s
 
 remote_write:
@@ -22,13 +22,11 @@ remote_write:
   # would have it try to unmarshal a v2 payload as a v1 WriteRequest and
   # fail to decode every time.
   - url: http://10.140.15.206:8428/api/v1/write
-    # protobuf_message: io.prometheus.write.v2.Request
+    protobuf_message: io.prometheus.write.v2.Request
     queue_config:
         capacity: 25000
         max_samples_per_send: 12000
         batch_send_deadline: 1s
-    metadata_config:
-        send: true
 
 scrape_configs:
   - job_name: prometheus-apps
