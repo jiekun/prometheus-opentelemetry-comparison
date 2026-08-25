@@ -22,7 +22,7 @@ remote_write:
   # would have it try to unmarshal a v2 payload as a v1 WriteRequest and
   # fail to decode every time.
   - url: http://10.140.15.206:8428/api/v1/write
-    protobuf_message: io.prometheus.write.v2.Request
+    # protobuf_message: io.prometheus.write.v2.Request
     queue_config:
         capacity: 25000
         max_samples_per_send: 12000
