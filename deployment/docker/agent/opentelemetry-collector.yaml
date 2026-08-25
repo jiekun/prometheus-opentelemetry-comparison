@@ -26,8 +26,8 @@ exporters:
   otlp_http/prometheus:
     sending_queue:
       storage: file_storage
-#    metrics_endpoint: "http://10.140.15.205:9090/api/v1/otlp/v1/metrics"
-    metrics_endpoint: "http://10.140.15.205:8428/opentelemetry/v1/metrics"
+    metrics_endpoint: "http://10.140.15.205:9090/api/v1/otlp/v1/metrics"
+#    metrics_endpoint: "http://10.140.15.205:8428/opentelemetry/v1/metrics"
     compression: gzip
     timeout: 10s
     tls:
