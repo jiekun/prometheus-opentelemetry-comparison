@@ -22,7 +22,7 @@
 # v1 route, which the v1 receiver already uses to tell the two apart,
 # attributing samples to exporter="vmagent" vs exporter="prometheus-2".
 global:
-  scrape_interval: 30s
+  scrape_interval: 10s
   scrape_timeout: 10s
 
 scrape_configs:
