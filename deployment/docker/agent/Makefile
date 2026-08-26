@@ -103,7 +103,7 @@ run-vmagent:
 		-remoteWrite.tmpDataPath=$(VMAGENT_DATA_DIR) \
 		-remoteWrite.maxRowsPerBlock=10000 \
 		-remoteWrite.flushInterval=1s \
-		--remoteWrite.forceVMProto \
+		--remoteWrite.forcePromProto \
 		> $(VMAGENT_LOG) 2>&1 & echo $$! > $(VMAGENT_PID)
 
 stop-vmagent:
