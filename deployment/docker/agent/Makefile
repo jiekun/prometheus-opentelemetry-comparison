@@ -30,7 +30,7 @@ VMAGENT_PID              := $(AGENT_BIN_DIR)/vmagent.pid
 # Same host:port cmd/metrics-noop-receiver as prometheus-agent.yaml's
 # remote_write, but /api/v1/write rather than /api/v2/write - see
 # vmagent.yaml's own comment for why.
-VMAGENT_REMOTE_WRITE_URL ?= http://10.140.15.206:9090/api/v1/write
+VMAGENT_REMOTE_WRITE_URL ?= http://10.140.15.201:8080/api/v1/write
 
 .PHONY: init-otel-agent run-otel-agent stop-otel-agent \
 	init-prometheus-agent run-prometheus-agent stop-prometheus-agent \
