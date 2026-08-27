@@ -18,10 +18,11 @@ remote_write:
   # (10.140.15.206), listening on its default port 9090, with
   # --web.enable-remote-write-receiver (see
   # deployment/docker/backend/Makefile's run-prometheus-server). Remote
-  # Write 1.0 explicitly, matching vmagent.yaml's own writer on this same
-  # comparison.
+  # Write 2.0 explicitly - same /api/v1/write URL as v1 would use;
+  # Prometheus's receiver negotiates the version by Content-Type, not by
+  # path.
   - url: http://10.140.15.206:9090/api/v1/write
-    protobuf_message: prometheus.WriteRequest
+    protobuf_message: io.prometheus.write.v2.Request
     queue_config:
         capacity: 25000
         max_samples_per_send: 12000

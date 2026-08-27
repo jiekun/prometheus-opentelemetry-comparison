@@ -61,7 +61,7 @@ PROFILE_DIR     ?= $(BIN_DIR)/profiles
 # by collect-backend-profiles below. Prometheus exposes net/http/pprof on
 # its own web port (9090) unconditionally, no extra flag needed.
 PROMETHEUS_STORAGE_HOST ?= 35.194.243.41
-OTEL_STORAGE_HOST       ?= 104.199.176.233
+OTEL_STORAGE_HOST       ?= 35.229.205.170
 BACKEND_PROFILE_PORT    ?= 9090
 
 .PHONY: all otel-app prometheus-app uninstrumented-app client clean tar \
