@@ -16,12 +16,14 @@ extensions:
     directory: /home/jiekun/prometheus-opentelemetry-comparison/bin/otel-agent-storage
 
 exporters:
-  # VictoriaMetrics running on the storage host (10.140.15.205), listening
-  # on its default port 8428, ingesting via its native OTLP endpoint.
-  otlp_http/victoriametrics:
+  # Prometheus running as a full backend on the storage host
+  # (10.140.15.205), listening on its default port 9090, ingesting via its
+  # native OTLP receiver (--web.enable-otlp-receiver, see
+  # deployment/docker/backend/Makefile's run-prometheus-server).
+  otlp_http/prometheus:
     sending_queue:
       storage: file_storage
-    metrics_endpoint: "http://10.140.15.205:8428/opentelemetry/v1/metrics"
+    metrics_endpoint: "http://10.140.15.205:9090/api/v1/otlp/v1/metrics"
     compression: gzip
     timeout: 10s
     tls:
@@ -33,7 +35,7 @@ service:
     metrics:
       receivers: [ otlp ]
       processors: [ batch ]
-      exporters: [ otlp_http/victoriametrics ]
+      exporters: [ otlp_http/prometheus ]
 
   # Self-observability: exposes the collector's own internal metrics as a
   # Prometheus-scrapeable endpoint (see prometheus-server's prometheus.yaml

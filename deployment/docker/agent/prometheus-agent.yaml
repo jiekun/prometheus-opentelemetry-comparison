@@ -14,10 +14,13 @@ global:
   scrape_timeout: 10s
 
 remote_write:
-  # VictoriaMetrics running on the storage host (10.140.15.206), listening
-  # on its default port 8428. Remote Write 1.0 explicitly, since VM here
-  # doesn't support the 2.0 protobuf format.
-  - url: http://10.140.15.206:8428/api/v1/write
+  # Prometheus running as a full backend on the storage host
+  # (10.140.15.206), listening on its default port 9090, with
+  # --web.enable-remote-write-receiver (see
+  # deployment/docker/backend/Makefile's run-prometheus-server). Remote
+  # Write 1.0 explicitly, matching vmagent.yaml's own writer on this same
+  # comparison.
+  - url: http://10.140.15.206:9090/api/v1/write
     protobuf_message: prometheus.WriteRequest
     queue_config:
         capacity: 25000
