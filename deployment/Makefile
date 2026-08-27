@@ -19,6 +19,14 @@ OTEL_METRIC_EXPORT_INTERVAL ?= 10000
 
 OTEL_EXPORTER_OTLP_METRICS_COMPRESSION ?= gzip
 
+# Disables the SDK's default exemplar reservoirs (see cmd/otel-app/main.go's
+# otlpmetrichttp.New/NewMeterProvider): otel-app never opens a span, so
+# exemplars are never actually recorded, but the default
+# TraceBasedExemplarFilter still preallocates a fixed-size reservoir per
+# attribute-set per instrument regardless - a meaningful chunk of otel-app's
+# heap footprint for no observability benefit here.
+OTEL_METRICS_EXEMPLAR_FILTER ?= always_off
+
 # This host's own internal IP, used to give each otel-app instance a
 # service.instance.id resource attribute of "<ip>:<port>" - both
 # Prometheus's OTLP receiver and the Collector's remote-write exporter
@@ -97,7 +105,7 @@ run-otel-app: otel-app
 	@mkdir -p $(LOG_DIR)
 	@: > $(LOG_DIR)/otel-app.pids
 	@for port in $$(seq $(PORT_START) $(PORT_END)); do \
-		LISTEN_ADDR=":$$port" OTEL_EXPORTER_OTLP_ENDPOINT=$(OTEL_COLLECTOR_ENDPOINT) OTEL_EXPORTER_OTLP_METRICS_COMPRESSION=$(OTEL_EXPORTER_OTLP_METRICS_COMPRESSION) OTEL_METRIC_EXPORT_INTERVAL=$(OTEL_METRIC_EXPORT_INTERVAL) OTEL_RESOURCE_ATTRIBUTES="service.instance.id=$(HOST_IP):$$port" $(BIN_DIR)/otel-app > $(LOG_DIR)/otel-app-$$port.log 2>&1 < /dev/null & \
+		LISTEN_ADDR=":$$port" OTEL_EXPORTER_OTLP_ENDPOINT=$(OTEL_COLLECTOR_ENDPOINT) OTEL_EXPORTER_OTLP_METRICS_COMPRESSION=$(OTEL_EXPORTER_OTLP_METRICS_COMPRESSION) OTEL_METRIC_EXPORT_INTERVAL=$(OTEL_METRIC_EXPORT_INTERVAL) OTEL_METRICS_EXEMPLAR_FILTER=$(OTEL_METRICS_EXEMPLAR_FILTER) OTEL_RESOURCE_ATTRIBUTES="service.instance.id=$(HOST_IP):$$port" $(BIN_DIR)/otel-app > $(LOG_DIR)/otel-app-$$port.log 2>&1 < /dev/null & \
 		echo $$! >> $(LOG_DIR)/otel-app.pids; \
 	done
 	@echo "started $$(wc -l < $(LOG_DIR)/otel-app.pids) otel-app instances on ports $(PORT_START)-$(PORT_END) (logs: $(LOG_DIR), pids: $(LOG_DIR)/otel-app.pids)"
